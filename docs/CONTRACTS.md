@@ -185,6 +185,7 @@ Produced by `perf-probe.py`. The before/after comparison document.
       "total_kb": 2784.0,
       "unsized_resources": 1,
       "discovery_incomplete": false,
+      "asset_cap_applied": false,
       "errors": []
     }
   ],
@@ -220,6 +221,10 @@ Rules:
   erased an 11 MB image total. Since both a before and an after run would null out the same way,
   it defeated the comparison the tool exists to make.
   </details>
+- `asset_cap_applied` is `true` when `--max-assets` stopped the walk short. **A capped run's
+  totals are a floor over a sample, never a page weight**, and the skipped resources are counted
+  in `unsized_resources`. Selection is a deterministic round-robin across resource kinds rather
+  than a sorted prefix, so a capped breakdown still reflects the page rather than the alphabet.
 - `discovery_incomplete` is `true` when a stylesheet could not be read, so resources it
   references are unknown **in number**, not merely in size. Distinct from `unsized_resources`,
   which counts resources that were found but could not be measured.
