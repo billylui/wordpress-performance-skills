@@ -53,6 +53,7 @@ PY = sys.executable or "python3"
 VALIDATE = REPO / "skills/wp-perf-fix/scripts/validate_plan.py"
 CAPS = REPO / "skills/wp-perf-audit/scripts/capabilities.py"
 PROBE = REPO / "skills/wp-perf-audit/scripts/perf-probe.py"
+FINGERPRINT = REPO / "skills/wp-perf-audit/scripts/fingerprint.py"
 
 # The four cache layers the change-plan contract requires a fingerprint to carry, in order. A
 # fixture missing any of them is refused for being malformed, which would mask the guard we mean
@@ -394,6 +395,36 @@ def main() -> int:
 
     expect_exit("unreachable host is still exit 3, not 4",
                 [PROBE, "--site", "https://nope-xyz-nores.invalid", "--quick", "--repeats", "1", "--quiet"], 3)
+
+    print("\n=== the probe must not identify as a bot and measure a challenge page ===")
+    # An escaped defect with no lock until now: an honest bot User-Agent is the intuitive choice
+    # and was the original one, but security plugins, host WAFs and CDN bot rules answer it with a
+    # challenge or a 403 — so the probe faithfully times an error page and reports it as the site's
+    # performance. A fabricated measurement is worse than no measurement.
+    #
+    # Nothing asserted this, so a refactor could have reverted the default and every test would
+    # still have passed. Taxonomy row PERF-04 in docs/TESTING.md.
+    fingerprint_mod = load_module("fingerprint", FINGERPRINT)
+    record(probe.DEFAULT_USER_AGENT.startswith("Mozilla/5.0"),
+           "perf-probe's default User-Agent is a browser string",
+           f"starts {probe.DEFAULT_USER_AGENT[:24]!r}")
+    record(fingerprint_mod.USER_AGENT.startswith("Mozilla/5.0"),
+           "fingerprint's User-Agent is a browser string",
+           f"starts {fingerprint_mod.USER_AGENT[:24]!r}")
+    # The two scripts must agree, or on a bot-protected site they describe different pages.
+    record(probe.DEFAULT_USER_AGENT == fingerprint_mod.USER_AGENT,
+           "both scripts send the SAME User-Agent, so they see the same page",
+           "probe and fingerprint agree" if probe.DEFAULT_USER_AGENT == fingerprint_mod.USER_AGENT
+           else "they differ, so a bot-protected site answers them differently")
+    # CONTROL: the override still works, or a site needing a specific string has no way through.
+    saved_ua = probe.USER_AGENT
+    try:
+        probe.apply_user_agent("wp-perf-probe/0.1")
+        record(probe.USER_AGENT == "wp-perf-probe/0.1",
+               "CONTROL: --user-agent still overrides the browser default",
+               f"got {probe.USER_AGENT!r}")
+    finally:
+        probe.USER_AGENT = saved_ua
 
     print("\n=== perf-probe.py — one dead host must not consume the whole payload walk ===")
     # The real stall this guards against: font CSS pointed at a staging domain that resolved but
