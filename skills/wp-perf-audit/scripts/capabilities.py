@@ -891,7 +891,11 @@ def build_profile(target: Optional[str], local_root_declared: Optional[Path] = N
     else:
         notes.append("No target URL was supplied; public access could not be exercised.")
 
-    wordpress_root = find_local_wordpress_root(Path.cwd())
+    # Search from the declared checkout when the operator named one. Discovering only from the
+    # working directory would make --local-root useless in its main case: an operator running the
+    # audit from a project directory while the WordPress checkout lives somewhere else. It would
+    # then leave WP-CLI and deploy access false while appearing to have been honoured.
+    wordpress_root = find_local_wordpress_root(local_root_declared or Path.cwd())
     local_wp_cli = exercise_wp_cli(tools["wp_cli"], wordpress_root)
     local_deploy_path = exercise_git_deploy_path(tools["git"], wordpress_root)
     local_access_is_bound = target is None
