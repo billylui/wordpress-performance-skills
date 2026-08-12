@@ -326,6 +326,25 @@ Rules — each exists because violating it has a specific real-world cost:
   the after-measurement meaningful; without it, any result can be rationalized as success.
 - **`catalog_entry`** is a path relative to `skills/wp-perf-audit/references/catalog/` and must
   resolve. It ties the change to the documented Fix, Verify and Rollback procedure.
+- **A `--stack` fingerprint must name exactly the same site as the plan.** The comparison is
+  canonical equality — scheme, host, effective port and path, with a trailing slash ignored — and
+  a URL whose path contains a dot segment or an encoded separator is **refused rather than
+  normalized**, because this code cannot know how the origin resolved it.
+
+  <details>
+  <summary>Old pattern: containment (removed after three review rounds)</summary>
+
+  Earlier revisions tried to infer whether the fingerprint's target lay *inside* the plan's site.
+  Comparing origins treated `https://example.com/site-a/` and `/site-b/` as one site. Adding path
+  containment then treated a parent installation at `/` as containing a separate one mounted at
+  `/shop/`, and `/site-a/../site-b/` resolved server-side to a sibling while still looking
+  contained. URL strings cannot prove installation identity, so the contract narrowed instead:
+  both documents are produced by this project's own tools and can carry the identical site string
+  by construction.
+
+  The accepted cost is that a fingerprint taken against a subpage no longer matches a plan whose
+  `site` is the root — re-run `fingerprint.py` against the site root.
+  </details>
 - **`tier` must be sufficient for every `target.kind`** in the plan — a `theme-file` change needs
   tier 3, a `wp-option` change needs tier 2, and so on. Planning a change the access level cannot
   perform wastes an approval round-trip at best.

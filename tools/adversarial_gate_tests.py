@@ -216,11 +216,11 @@ def make_wordpress_checkout(root: pathlib.Path, home: str) -> pathlib.Path:
     return root
 
 
-def capabilities_for(cwd: pathlib.Path, target: str) -> dict:
-    out = subprocess.run(
-        [PY, str(CAPS), "--target", target, "--quiet", "--json", "-"],
-        capture_output=True, text=True, cwd=str(cwd),
-    )
+def capabilities_for(cwd: pathlib.Path, target: str, local_root: pathlib.Path = None) -> dict:
+    argv = [PY, str(CAPS), "--target", target, "--quiet", "--json", "-"]
+    if local_root is not None:
+        argv += ["--local-root", str(local_root)]
+    out = subprocess.run(argv, capture_output=True, text=True, cwd=str(cwd))
     try:
         return json.loads(out.stdout)
     except json.JSONDecodeError:
@@ -261,8 +261,11 @@ def main() -> int:
         print("\n=== validate_plan.py — a fingerprint must belong to the plan's installation ===")
         expect_exit("CONTROL: matching stack profile is accepted",
                     [VALIDATE, write_plan(tmp), "--stack", write_stack(tmp, "https://example.com/"), "--quiet"], 0)
-        expect_exit("CONTROL: a page inside the site is accepted",
-                    [VALIDATE, write_plan(tmp), "--stack", write_stack(tmp, "https://example.com/some-page/"), "--quiet"], 0)
+        # A fingerprint of a SUBPAGE is refused, by design. Containment was abandoned because a
+        # parent installation at `/` appears to contain a separate one at `/shop/`; the accepted
+        # cost is that a fingerprint must be taken against the site root the plan names.
+        expect_exit("a fingerprint of a subpage is refused, not assumed to be the root",
+                    [VALIDATE, write_plan(tmp), "--stack", write_stack(tmp, "https://example.com/some-page/"), "--quiet"], 1)
         expect_exit("stack profile from a different host",
                     [VALIDATE, write_plan(tmp), "--stack", write_stack(tmp, "https://someone-else.example.org/"), "--quiet"], 1)
         expect_exit("stack profile from a SIBLING install on the same origin",
@@ -276,33 +279,44 @@ def main() -> int:
     try:
         with tempfile.TemporaryDirectory() as d:
             tmp = pathlib.Path(d)
-            # Binding reads WP_HOME/WP_SITEURL via `wp config get`, so without WP-CLI installed a
-            # checkout can never bind — which is fail-closed and correct, but makes the positive
-            # control unrunnable. Skipping is honest; passing it here would be meaningless.
-            if shutil.which("wp") is None:
-                skip("CONTROL: a checkout of the audited site does bind local access",
-                     "WP-CLI not installed, so no checkout can bind; the two negative cases below "
-                     "are correspondingly weaker evidence on this machine")
-            else:
-                matching = make_wordpress_checkout(tmp / "matching", base)
-                doc = capabilities_for(matching, base + "/")
-                bound = doc["access"].get("deploy_path") or doc["access"].get("wp_cli")
-                record(bool(bound), "CONTROL: a checkout of the audited site does bind local access",
-                       f"deploy_path={doc['access'].get('deploy_path')} wp_cli={doc['access'].get('wp_cli')}")
+            # Binding is now an explicit operator declaration rather than a URL inference, so
+            # these cases no longer depend on WP-CLI being installed and cannot go vacuous.
+            checkout = make_wordpress_checkout(tmp / "checkout", base)
 
-            other = make_wordpress_checkout(tmp / "other", "https://a-different-site.example.net")
-            doc = capabilities_for(other, base + "/")
-            unbound = not doc["access"].get("deploy_path") and not doc["access"].get("wp_cli")
-            record(unbound, "an unrelated checkout does NOT bind local access",
+            doc = capabilities_for(checkout, base + "/", local_root=checkout)
+            bound = doc["access"].get("deploy_path") or doc["access"].get("wp_cli")
+            record(bool(bound), "CONTROL: a checkout declared with --local-root DOES bind",
                    f"tier={doc['tier']['value']} deploy_path={doc['access'].get('deploy_path')}")
 
-            sibling = make_wordpress_checkout(tmp / "sibling", base + "/site-a")
-            doc = capabilities_for(sibling, base + "/site-b/")
+            doc = capabilities_for(checkout, base + "/")
             unbound = not doc["access"].get("deploy_path") and not doc["access"].get("wp_cli")
-            record(unbound, "a SIBLING install on the same origin does NOT bind local access",
+            record(unbound, "the same checkout WITHOUT --local-root does not bind",
+                   f"tier={doc['tier']['value']} deploy_path={doc['access'].get('deploy_path')}")
+
+            elsewhere = make_wordpress_checkout(tmp / "elsewhere", base)
+            doc = capabilities_for(checkout, base + "/", local_root=elsewhere)
+            unbound = not doc["access"].get("deploy_path") and not doc["access"].get("wp_cli")
+            record(unbound, "--local-root naming a DIFFERENT directory does not bind",
                    f"tier={doc['tier']['value']} deploy_path={doc['access'].get('deploy_path')}")
     finally:
         server.shutdown()
+
+    print("\n=== installation identity is exact, and ambiguity is refused ===")
+    validate = load_module("validate_plan", VALIDATE)
+    for label, site, probed, want in [
+        ("identical URLs are the same install", "https://example.com", "https://example.com", True),
+        ("trailing slash is not a difference", "https://example.com", "https://example.com/", True),
+        ("subdirectory install matches itself", "https://example.com/blog", "https://example.com/blog/", True),
+        ("SIBLING install is refused", "https://example.com/site-a", "https://example.com/site-b/", False),
+        ("NESTED install is refused", "https://example.com", "https://example.com/shop/", False),
+        ("a subpage is not the site root", "https://example.com", "https://example.com/a-page/", False),
+        ("dot-segment traversal is refused, not normalized",
+         "https://example.com/site-a", "https://example.com/site-a/../site-b/", None),
+        ("encoded separator is refused",
+         "https://example.com/site-a", "https://example.com/site-a%2f..%2fsite-b/", None),
+    ]:
+        got = validate.identifies_same_installation(site, probed)
+        record(got is want, f"identity: {label}", f"got {got}, want {want}")
 
     print("\n=== perf-probe.py — quick mode must not call an unusable response usable ===")
     # perf-probe deliberately requires an absolute HTTPS --site, so a plain-HTTP loopback fixture
