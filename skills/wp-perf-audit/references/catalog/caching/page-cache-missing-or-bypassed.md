@@ -235,7 +235,7 @@ activation; absence from an old list is not permission.
 
 | Host class | Permitted | Path |
 |---|---|---|
-| `wpengine` | Use the platform page cache. Do not install or activate a page-cache plugin unless WP Engine explicitly confirms it is permitted for this environment. | Confirm the current disallowed-plugin policy with the host; use the WP Engine cache controls/support purge path. A disallowed cache plugin can trigger platform enforcement, including suspension. |
+| `wpengine` | Use the platform page cache. Do not install or activate a page-cache plugin unless WP Engine explicitly confirms it is permitted for this environment. | Confirm the current disallowed-plugin policy with the host; use the WP Engine cache controls/support purge path. A disallowed cache plugin can trigger platform enforcement, including removal of the plugin. |
 | `kinsta` | Use the platform page cache. Add no competing page-cache plugin without explicit host confirmation. | Confirm with the host; use the Kinsta cache controls or support-approved purge path. |
 | `siteground` | Prefer the host-integrated `sg-optimizer` path when Dynamic Cache is available; do not run a competing full-page cache without confirmation. | Confirm with the host for the specific plan; configure and purge through SiteGround controls and `sg-optimizer`. |
 | `godaddy` | Treat the managed WordPress cache as the candidate owner; plugin allowance varies by product. | Confirm with the host for the exact plan, then use its platform flush path or one explicitly approved plugin. |
