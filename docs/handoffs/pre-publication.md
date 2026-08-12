@@ -103,7 +103,26 @@ ID, date, bug, miss-class, what would have caught it, lock file. Deliberately **
 during this wrap — a partial gate that looks complete is worse than none, and release-gate owns
 that contract's shape.
 
-### 7. Distribution and outreach — not started, deliberately
+### 7. A dead host can still hang a payload walk
+
+**Problem:** `--max-assets` caps how many resources are sized, which bounds the symptom. The actual
+stall on a real audit was font CSS pointing at a staging domain that resolved but never answered, so
+every font request burned the full timeout before failing. Capping the count does not stop one dead
+host from consuming the whole budget.
+
+**Fix:** a per-host circuit breaker — stop requesting a host after N consecutive timeouts, and count
+its remaining resources as unsized with that reason rather than as zero. The insertion point is the
+sizing pool in `perf-probe.py`; `RequestPacer` already solves lock-guarded state shared across
+workers, and curl exit code 28 already means timeout.
+
+### 8. The `sspe-website` audit PR #67 is open and unreviewed
+
+A genuine audit of a live client site, written before the report contract existed. It was used as the
+test artifact while building `check_report.py` and fails that checker on section shape and on every
+scorecard row — which is the specification working, not a defect in the audit. The audit itself has
+not been reviewed or merged, and nothing in this repository changed it.
+
+### 9. Distribution and outreach — not started, deliberately
 
 Each of these publishes under the maintainer's identity and should not be automated:
 

@@ -59,6 +59,18 @@ jobs:
         # guarantee in wp-perf-fix rests on nothing.
         run: python skills/wp-perf-fix/scripts/validate_plan.py --selftest
 
+      - name: Report checker self-test
+        # Same reasoning as the change-plan validator: the report contract is only worth as much
+        # as the refusals behind it. A checker that silently stops rejecting an invented rating
+        # is worse than none, because the reports keep passing.
+        run: python skills/wp-perf-audit/scripts/check_report.py --selftest
+
+      - name: The shipped report template satisfies its own contract
+        # Run through the tools/ shim so both entry points are exercised. --template tolerates
+        # {{PLACEHOLDER}} cells while still enforcing sections, order and row presence, so the
+        # template cannot drift from the contract it is supposed to embody.
+        run: python tools/check_report.py --template skills/wp-perf-audit/references/findings-report-template.md
+
       - name: Shell scripts parse
         run: |
           shopt -s globstar nullglob

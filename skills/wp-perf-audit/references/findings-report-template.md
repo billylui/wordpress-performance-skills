@@ -2,12 +2,48 @@
 # Performance audit — {{SITE}}
 
 <!--
-  The report template. Two sections make this different from every other audit report and must
-  never be dropped: "What could not be checked" and "What did not work". An audit that only
-  lists wins is a sales document. Fill every section; write "none" rather than deleting one.
+  The report template. Its shape is fixed by report-contract.md, and scripts/check_report.py
+  enforces that shape — run it on the draft before publishing.
+
+  Two sections make this different from every other audit report and must never be dropped:
+  "What could not be checked" and "What did not work". An audit that only lists wins is a sales
+  document. Fill every section; write "none" rather than deleting one.
 -->
 
 **Audited:** {{DATE}} · **Access tier:** {{TIER}} ({{TIER_NAME}}) · **Tooling:** {{TOOLS}}
+
+## Scorecard
+
+The numbers a reader looks for first. Every row is always present. A metric nobody measured says
+`unmeasured` with the reason in **Source** — never a blank, never an estimate, and never a rating.
+
+Ratings come from the published table in [report-contract.md](report-contract.md), evaluated at the
+75th percentile of field data. Only LCP, INP and CLS have one; every other row carries `—`. **Say
+`lab` or `field` in Source for the three rated rows** — a single lab run is a useful approximation of
+a field threshold, not the same statement, and the reader has to be able to tell which they are
+holding.
+
+| Metric | Value | Rating | Source |
+|---|---|---|---|
+| LCP | {{LCP}} | {{LCP_RATING}} | {{LCP_SOURCE}} |
+| INP | {{INP}} | {{INP_RATING}} | {{INP_SOURCE}} |
+| CLS | {{CLS}} | {{CLS_RATING}} | {{CLS_SOURCE}} |
+| FCP | {{FCP}} | — | {{FCP_SOURCE}} |
+| TBT | {{TBT}} | — | {{TBT_SOURCE}} |
+| Speed Index | {{SPEED_INDEX}} | — | {{SPEED_INDEX_SOURCE}} |
+| TTFB (origin) | {{ORIGIN_TTFB}} | — | {{ORIGIN_TTFB_SOURCE}} |
+| TTFB (edge) | {{EDGE_TTFB}} | — | {{EDGE_TTFB_SOURCE}} |
+| Page weight | {{TOTAL_WEIGHT}} | — | {{WEIGHT_SOURCE}} |
+| Requests | {{REQUESTS}} | — | {{REQUESTS_SOURCE}} |
+
+<!--
+  If the payload walk was capped or did not finish, say so in the Page weight Source cell: that
+  total is a floor over a sample, not a page weight.
+  Add extra rows here when you have them — field/CrUX data, a second URL, a per-template breakdown.
+  They are validated by the same rules.
+-->
+
+{{SCORECARD_NOTES}}
 
 ## Stack
 
@@ -39,11 +75,9 @@ which one this site has.
 |---|---|---|---|---|---|
 | {{URL}} | {{ORIGIN_TTFB}} ms | {{EDGE_TTFB}} ms | {{CACHE_STATUS}} | {{REQUESTS}} | {{TOTAL_KB}} KB |
 
-{{CWV_TABLE}}
+{{BASELINE_NOTES}}
 
-<!-- If no browser-capable tool was available, say so here explicitly. Do not silently omit CWV. -->
-
-## Findings, ranked by expected impact
+## Findings
 
 Ranked by how much they are expected to move a real metric — not by how easy they are to fix, and
 not by how many of them there are. Each names the evidence it rests on.
@@ -57,6 +91,16 @@ not by how many of them there are. Each names the evidence it rests on.
 - **Risk / constraint:** {{RISK}}
   <!-- If the host forbids the obvious fix, say so here and give the permitted path instead. -->
 
+## Disproven
+
+<!--
+  Optional but recommended. Hypotheses that were tested and rejected, so the next audit does not
+  re-open a settled question. Delete this heading if there were none — it is the one section here
+  that is not mandatory.
+-->
+
+- {{DISPROVEN_CLAIM}} — {{DISPROVING_EVIDENCE}}
+
 ## What could not be checked
 
 **Do not delete this section.** These are the questions this audit had no way to answer at its
@@ -69,8 +113,8 @@ audit's boundary, or they will read silence as absence.
 
 ## Changes applied
 
-Only for sessions that used the fix skill. Every row needs a rollback that has been verified to
-exist, not merely to have been intended.
+Only for sessions that used the fix skill; write `none — read-only audit` otherwise. Every row needs
+a rollback that has been verified to exist, not merely to have been intended.
 
 | # | Change | Layer purged | Verified how | Rollback |
 |---|---|---|---|---|
@@ -78,9 +122,12 @@ exist, not merely to have been intended.
 
 ## Result
 
-| Page | Metric | Before | After | Change |
-|---|---|---|---|---|
-| {{URL}} | {{METRIC}} | {{BEFORE}} | {{AFTER}} | {{DELTA}} |
+Before and after, on the same scorecard rows, measured warm under the same conditions. Empty for a
+read-only audit.
+
+| Metric | Before | After | Δ |
+|---|---|---|---|
+| {{METRIC}} | {{BEFORE}} | {{AFTER}} | {{DELTA}} |
 
 ## What did not work
 
