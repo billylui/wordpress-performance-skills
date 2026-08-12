@@ -69,7 +69,24 @@ Stacks nobody has pointed the audit at may be misread.
 third-party host because the project promises no undeclared egress. The predicate itself is
 covered in-process; only the CLI path is unproven.
 
-### 5. Distribution and outreach — not started, deliberately
+### 5. Cross-harness usability — researched, not exhaustively tested
+
+**What is established.** Both skills pass `skills-ref validate`, the reference implementation
+from the Agent Skills specification's own library, and that check runs in CI. The negative
+control was confirmed: the validator rejects a deliberately malformed skill, so the pass is
+meaningful. The cross-agent `skills` CLI reads this repository, reports `Found 2 skills`, and
+lists both with their descriptions — and it auto-detects the running agent, so per-agent install
+paths are its problem rather than ours. Both skills declare their runtime requirements in the
+spec's `compatibility` field, where a conforming client can read them before executing anything.
+
+**What is not.** Installation and execution have only been exercised on **Claude Code**. "Loads
+and runs correctly on Codex, Cursor, Copilot or Gemini CLI" remains an untested claim, however
+strong the format-level evidence is.
+
+**Fix:** install on one other agent and run a tier-0 audit. Roughly ten minutes, and it converts
+the strongest remaining assumption into evidence.
+
+### 6. Distribution and outreach — not started, deliberately
 
 Each of these publishes under the maintainer's identity and should not be automated:
 

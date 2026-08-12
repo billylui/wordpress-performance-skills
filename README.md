@@ -14,33 +14,66 @@ Give it more access and it can fix what it found, safely, with a rollback for ev
 
 ## Install
 
-**Claude Code**
+### Any agent (recommended)
+
+The [`skills` CLI](https://github.com/vercel-labs/skills) is the cross-agent installer and
+supports 75+ agents. It **auto-detects the agent** it is running under and symlinks the skills
+into that agent's own directory, so you do not need to know where your agent keeps them:
+
+```bash
+npx skills add billylui/wordpress-performance-skills
+```
+
+Useful flags:
+
+| Flag | Effect |
+|---|---|
+| `-s wp-perf-audit` | Install only the read-only audit half |
+| `-g` | Install globally (user-level) rather than into this project |
+| `-a <agent>` | Target a specific agent; `-a '*'` installs to all detected agents |
+| `-l` | List what the repo offers without installing |
+| `--copy` | Copy the files instead of symlinking |
+
+Verified against this repository: the installer reports `Found 2 skills` and lists both with
+their descriptions.
+
+### Claude Code
+
+The `skills` CLI above works. If you prefer the plugin system, which also carries the
+marketplace metadata:
 
 ```bash
 /plugin marketplace add billylui/wordpress-performance-skills
 /plugin install wordpress-performance@wordpress-performance-skills
 ```
 
-**Any agent supporting the Agent Skills standard** (Codex, Cursor, Copilot, Gemini CLI, and
-others):
+### Manually
 
-```bash
-npx skills add billylui/wordpress-performance-skills
-```
+Copy `skills/wp-perf-audit/` and `skills/wp-perf-fix/` into wherever your agent looks for
+skills — `.claude/skills/` for a Claude Code project, `.agents/skills/` for the cross-agent
+convention, `~/.claude/skills/` or the equivalent for a global install. Paths differ per agent,
+which is exactly what the `skills` CLI exists to handle.
 
-**Manually** — copy `skills/wp-perf-audit/` and `skills/wp-perf-fix/` into `.claude/skills/` in
-your project, or `~/.claude/skills/` for every project. Each skill directory is self-contained;
-nothing it needs at runtime lives outside it.
+Each skill directory is self-contained: nothing it needs at runtime lives outside it.
 
-Install `wp-perf-audit` alone if you only want measurement and reporting. It is read-only and
-touches nothing.
+### Requirements
 
-Then point it at a site:
+Both skills declare these in their `compatibility` frontmatter, so a conforming agent can read
+them before running anything:
+
+- a shell, `curl`, and Python 3.9+ (standard library only — nothing to install)
+- outbound network access to the WordPress site being audited
+
+**A sandboxed runtime with no network access cannot perform this audit**, because it measures
+live websites. Such a runtime should say so rather than report an unreachable site as a finding.
+
+### Then point it at a site
 
 > Audit the performance of https://example.com
 
 No credentials, no plugin, no setup. That is tier 0, and it is a complete audit of the frontend
-and cache layers.
+and cache layers. Install `wp-perf-audit` alone if you only want measurement and reporting — it
+is read-only and touches nothing.
 
 ---
 
