@@ -265,6 +265,87 @@ class RequestPacer:
 PACER = RequestPacer()
 
 
+# Consecutive timed-out REQUESTS from one host before the walk stops asking it for anything else.
+# Counted per request, not per resource, because a resource whose HEAD times out then pays the
+# same timeout again on the GET fallback — so a single dead resource contributes two.
+# Three, because one timeout is ordinary on a busy origin and two can still be coincidence, while
+# three in a row from the same host has never yet been anything but a host that will not answer.
+HOST_TIMEOUT_CIRCUIT_LIMIT = 3
+
+# curl's exit code for "operation timed out". Deliberately the only code that trips the breaker:
+# a host that refuses a connection or fails to resolve costs milliseconds and is self-limiting,
+# whereas a host that accepts the connection and never answers burns the full timeout every time.
+# Wall-clock is what the breaker exists to protect, so only the slow failure counts.
+CURL_TIMEOUT_CODE = 28
+
+
+class HostCircuitBreaker:
+    """Stop requesting a host once it has timed out N times in a row.
+
+    `--max-assets` caps how many resources are sized, which bounds the symptom. It does not stop
+    one unreachable host from consuming the entire budget: on a real audit, font CSS pointed at a
+    staging domain that resolved but never answered, and every font request burned the full
+    timeout before failing. Capping the count still leaves each surviving request paying it.
+
+    The counter resets on any answered request, so a host that is merely slow or intermittently
+    loaded recovers instead of being written off after a bad patch. Only an unbroken run of
+    timeouts opens the circuit.
+
+    Nothing skipped is ever counted as zero bytes. Skipped resources are reported as unsized with
+    the reason, exactly like any other resource that could not be measured, so the payload total
+    stays a floor rather than becoming a quiet understatement.
+
+    State is shared across the sizing pool's worker threads and across every URL in a run — a host
+    that is dead for one page is dead for the next, and re-testing it per page would give back the
+    time the breaker just saved.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._consecutive_timeouts: Dict[str, int] = {}
+        self._open_hosts: Set[str] = set()
+        self._skipped: Dict[str, int] = {}
+
+    def reset(self) -> None:
+        with self._lock:
+            self._consecutive_timeouts.clear()
+            self._open_hosts.clear()
+            self._skipped.clear()
+
+    def is_open(self, host: str) -> bool:
+        with self._lock:
+            return host in self._open_hosts
+
+    def record_outcome(self, host: str, timed_out: bool) -> None:
+        with self._lock:
+            if not timed_out:
+                self._consecutive_timeouts[host] = 0
+                return
+            count = self._consecutive_timeouts.get(host, 0) + 1
+            self._consecutive_timeouts[host] = count
+            if count >= HOST_TIMEOUT_CIRCUIT_LIMIT:
+                self._open_hosts.add(host)
+
+    def record_skip(self, host: str) -> None:
+        with self._lock:
+            self._skipped[host] = self._skipped.get(host, 0) + 1
+
+    def skip_counts(self) -> Dict[str, int]:
+        """Snapshot skips per host, so a caller can report only what happened on its own watch."""
+
+        with self._lock:
+            return dict(self._skipped)
+
+
+BREAKER = HostCircuitBreaker()
+
+
+def host_of(url: str) -> str:
+    """Return the host a request will actually go to, lowercased for stable keying."""
+
+    return urlsplit(url).netloc.lower()
+
+
 def select_within_cap(
     ordered_resources: Sequence[Tuple[str, str]], cap: int
 ) -> Tuple[List[Tuple[str, str]], int]:
@@ -476,10 +557,26 @@ def get_size(curl_binary: str, url: str, hint: str, head_error: str) -> Dict[str
     stays unsized rather than being guessed at.
     """
 
+    host = host_of(url)
+    if BREAKER.is_open(host):
+        # Reached when the HEAD above was the request that opened the circuit. Retrying the same
+        # dead host with a GET would pay a second full timeout to learn what was just established.
+        BREAKER.record_skip(host)
+        return {
+            "url": url,
+            "kind": hint,
+            "size_bytes": None,
+            "error": "host {} stopped answering; GET fallback not attempted ({})".format(
+                host, head_error
+            ),
+            "circuit_skipped": True,
+        }
+
     result = run_curl(
         curl_binary,
         ["--output", os.devnull, "--write-out", "%{size_download} %{http_code} %{content_type}", url],
     )
+    BREAKER.record_outcome(host, result["returncode"] == CURL_TIMEOUT_CODE)
     if result["returncode"] != 0:
         return {"url": url, "kind": hint, "size_bytes": None, "error": head_error}
 
@@ -513,12 +610,29 @@ def get_size(curl_binary: str, url: str, hint: str, head_error: str) -> Dict[str
 
 
 def head_size(curl_binary: str, url: str, hint: str) -> Dict[str, object]:
-    """Size a resource, preferring a cheap HEAD and falling back to a counted GET."""
+    """Size a resource, preferring a cheap HEAD and falling back to a counted GET.
+
+    The circuit breaker is consulted here rather than inside `run_curl`, because it must govern
+    the asset walk alone. The site being audited is the whole point of the run: if its own origin
+    is timing out, that is the measurement, not a reason to stop asking.
+    """
+
+    host = host_of(url)
+    if BREAKER.is_open(host):
+        BREAKER.record_skip(host)
+        return {
+            "url": url,
+            "kind": hint,
+            "size_bytes": None,
+            "error": "host {} stopped answering; not requested".format(host),
+            "circuit_skipped": True,
+        }
 
     result = run_curl(
         curl_binary,
         ["--head", "--dump-header", "-", "--output", os.devnull, url],
     )
+    BREAKER.record_outcome(host, result["returncode"] == CURL_TIMEOUT_CODE)
     if result["returncode"] != 0:
         return get_size(curl_binary, url, hint, str(result["error"]))
 
@@ -798,6 +912,7 @@ def payload_metrics(
             "asset cap of {} reached: {} discovered resource(s) were not sized and are excluded "
             "from the totals".format(MAX_ASSETS, skipped_by_cap)
         )
+    skips_before = BREAKER.skip_counts()
     with concurrent.futures.ThreadPoolExecutor(max_workers=HEAD_WORKER_COUNT) as executor:
         futures = [
             executor.submit(head_size, curl_binary, asset_url, hint)
@@ -807,11 +922,27 @@ def payload_metrics(
             result = future.result()
             if result["size_bytes"] is None:
                 unsized += 1
-                errors.append(
-                    "could not size {}: {}".format(result["url"], result["error"])
-                )
+                # Resources the breaker skipped are still unsized — never zero — but they are
+                # reported once per host below rather than once per resource. A dead host with
+                # fifty assets would otherwise bury every other error under fifty copies of the
+                # same sentence.
+                if not result.get("circuit_skipped"):
+                    errors.append(
+                        "could not size {}: {}".format(result["url"], result["error"])
+                    )
             else:
                 buckets[result["kind"]] += result["size_bytes"]
+
+    skips_after = BREAKER.skip_counts()
+    for dead_host in sorted(skips_after):
+        skipped_here = skips_after[dead_host] - skips_before.get(dead_host, 0)
+        if skipped_here > 0:
+            errors.append(
+                "host {} stopped answering after {} consecutive timeouts: {} resource(s) on it "
+                "were not sized and are excluded from the totals".format(
+                    dead_host, HOST_TIMEOUT_CIRCUIT_LIMIT, skipped_here
+                )
+            )
 
     result_metrics: Dict[str, object] = {
         "requests": 1 + len(resources),
@@ -1380,6 +1511,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "--delay must be between 0 and {} seconds".format(MAX_REQUEST_DELAY_SECONDS)
         )
     PACER.configure(delay)
+    # Module-level state, so a second run inside one process must not inherit the first run's
+    # verdict about a host. Matters for the adversarial tests, which drive several runs in-process.
+    BREAKER.reset()
     max_assets = getattr(args, "max_assets", NO_ASSET_CAP) or NO_ASSET_CAP
     if max_assets < 0:
         parser.error("--max-assets must be 0 (no cap) or a positive count")

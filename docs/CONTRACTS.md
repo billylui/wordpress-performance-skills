@@ -225,6 +225,14 @@ Rules:
   totals are a floor over a sample, never a page weight**, and the skipped resources are counted
   in `unsized_resources`. Selection is a deterministic round-robin across resource kinds rather
   than a sorted prefix, so a capped breakdown still reflects the page rather than the alphabet.
+- **A host that stops answering is dropped from the walk, and its resources stay unsized.** After
+  three consecutive timeouts from one host the probe stops requesting it, counts everything
+  remaining on that host in `unsized_resources`, and records one line in `errors` naming the host
+  and how many resources it covers. Only timeouts trip this: a refused or unresolvable host fails
+  in milliseconds and is self-limiting, while one that accepts the connection and never answers
+  burns the full timeout every time. The counter resets on any answered request, so a merely slow
+  host recovers rather than being written off for the rest of the run. This adds no field — the
+  evidence is in `errors`, and the totals stay a floor exactly as they do under `--max-assets`.
 - `discovery_incomplete` is `true` when a stylesheet could not be read, so resources it
   references are unknown **in number**, not merely in size. Distinct from `unsized_resources`,
   which counts resources that were found but could not be measured.
