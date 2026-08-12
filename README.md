@@ -247,7 +247,23 @@ python3 skills/wp-perf-fix/scripts/validate_plan.py --selftest
 
 ---
 
+## Contributing
+
+The most useful contribution is **coverage of a stack this gets wrong** — see
+[CONTRIBUTING.md](CONTRIBUTING.md). Reports that the audit misread a builder, host or cache layer
+are worth more than feature requests, because no maintainer has seen every WordPress setup.
+
+By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## License
 
-[GPL-2.0-or-later](LICENSE) — matching the WordPress ecosystem norm, since this project emits PHP
-destined for themes and plugins.
+Copyright © 2026 Billy Lui and contributors.
+
+Licensed under [GPL-2.0-or-later](LICENSE) — matching the WordPress ecosystem norm, since this
+project emits PHP destined for themes and plugins. This differs from the MIT choice made by
+several other agent-skill collections; the reasoning is in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+This program is distributed in the hope that it will be useful, but **without any warranty**;
+without even the implied warranty of merchantability or fitness for a particular purpose. It
+changes production websites when you ask it to — read [SECURITY.md](SECURITY.md) for the safety
+model, and keep your own backups.

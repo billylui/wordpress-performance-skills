@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
-# Shared contracts — wp-perf-skills
+# Shared contracts — wordpress-performance-skills
 
 Every script in `skills/*/scripts/` codes against this document. It is the single home for the
 JSON schemas, the shared invariants, and the CLI conventions. Change it here first, then change
