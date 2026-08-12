@@ -1,0 +1,38 @@
+{
+  "name": "wordpress-performance-skills",
+  "owner": {
+    "name": "Billy Lui"
+  },
+  "metadata": {
+    "description": "Agent skills for auditing and fixing performance on live WordPress sites",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "wordpress-performance",
+      "source": "./",
+      "description": "Audit and fix performance on live WordPress sites across whatever stack they actually run — page builders, caching layers, CDNs and managed hosts. Fingerprints the stack, separates origin from edge TTFB, and applies fixes only under a guarded write loop with a rollback for every change.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Billy Lui"
+      },
+      "repository": "https://github.com/billylui/wordpress-performance-skills",
+      "license": "GPL-2.0-or-later",
+      "category": "productivity",
+      "keywords": [
+        "wordpress",
+        "performance",
+        "core-web-vitals",
+        "lcp",
+        "inp",
+        "caching",
+        "cdn",
+        "pagespeed",
+        "lighthouse",
+        "woocommerce",
+        "elementor",
+        "web-performance"
+      ]
+    }
+  ]
+}

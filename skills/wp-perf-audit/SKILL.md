@@ -48,6 +48,15 @@ python3 skills/wp-perf-audit/scripts/capabilities.py --target <URL> --json /tmp/
 Gives the confirmed tier and, more importantly, `can_measure` and `cannot_measure`. Those two
 lists are the audit's honest boundary and belong in the report verbatim.
 
+**A local WordPress checkout never raises the tier on its own.** Nothing about a directory on
+this disk proves it is the site at that address, and getting it wrong would claim WP-CLI or
+deploy access to a site the operator cannot touch. When the operator confirms the checkout is the
+target, declare it:
+
+```bash
+python3 skills/wp-perf-audit/scripts/capabilities.py --target <URL> --local-root /path/to/wordpress
+```
+
 Tier 0 (a public URL, no credentials) is a complete audit of the frontend and cache layers — not
 a degraded mode. See [references/access-tiers.md](references/access-tiers.md) for what each tier
 adds and how to ask for more without pushing.
@@ -85,7 +94,7 @@ is visible to file-size analysis, and both outrank compressing an image.
 
 ### 5. Report
 
-Use [templates/findings-report.md](../../templates/findings-report.md). Two sections are
+Use [references/findings-report-template.md](references/findings-report-template.md). Two sections are
 mandatory and must never be dropped: **"What could not be checked"** and **"What did not work"**.
 A report containing only wins is a sales document, and the next person to touch the site pays for
 the omission.

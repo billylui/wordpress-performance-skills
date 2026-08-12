@@ -55,7 +55,7 @@ you a minute rather than an afternoon.
 
 ## Reporting a vulnerability
 
-Open a [security advisory](https://github.com/billylui/wp-perf-skills/security/advisories/new)
+Open a [security advisory](https://github.com/billylui/wordpress-performance-skills/security/advisories/new)
 rather than a public issue, and please include the smallest reproduction you can manage.
 
 Things we especially want to hear about:

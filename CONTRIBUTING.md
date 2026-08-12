@@ -61,8 +61,24 @@ Numbers are better than adjectives. If you claim a fix helps, a before/after fro
 ```bash
 python3 -m py_compile skills/**/*.py evals/*.py tools/*.py
 python3 tools/check_no_egress.py
+python3 tools/check_skill_docs.py
+python3 tools/check_plugin_manifest.py
+python3 skills/wp-perf-fix/scripts/validate_plan.py --selftest
 python3 evals/run_evals.py --list
 ```
+
+**If you touch a safety gate, also run the adversarial suite** — it needs network access, so CI
+does not run it:
+
+```bash
+python3 tools/adversarial_gate_tests.py
+```
+
+Those cases exist because a review once found the change-plan validator failing open in three
+ways *while its own self-test passed*. A test written by the author of a gate can only cover the
+cases that author thought of, so the adversarial suite is written from review findings instead,
+and every case asserts a refusal. Add a case there whenever a review finds a gate that let
+something through.
 
 CI runs these on Python 3.9 and 3.13. **3.9 is the floor and it is not negotiable**: a large share
 of real WordPress sites run on older infrastructure, and operators frequently run these scripts on
