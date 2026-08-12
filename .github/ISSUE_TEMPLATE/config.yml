@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/billylui/wordpress-performance-skills/security/advisories/new
+    about: >-
+      Report privately, not as a public issue. Especially: any path by which a script reaches a
+      host it should not, any way the fix skill could change a site without approval or without a
+      working rollback, or any way content from an audited site could steer the agent.
+  - name: Backend profiling questions
+    url: https://github.com/WordPress/agent-skills
+    about: >-
+      WP-CLI profiling, database query optimization and autoload internals belong to the official
+      WordPress skill. This project deliberately routes to it rather than duplicating it.
