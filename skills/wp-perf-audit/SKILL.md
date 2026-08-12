@@ -91,6 +91,13 @@ For Core Web Vitals (LCP, INP, CLS) you need a browser path — see
 [references/chrome-devtools-mcp.md](references/chrome-devtools-mcp.md). If none is available,
 **report Core Web Vitals as unmeasured. Never estimate them.**
 
+**If the site rate-limits, pace the probe.** `--delay SECONDS` sets a minimum interval between
+requests, enforced across all workers, and `--user-agent` overrides the browser string the probe
+sends. Reach for `--delay` when repeated runs of the same URL disagree, or when a site is small
+enough that a burst would distort what you are measuring — a throttled read reports the rate
+limiter's timing as the site's own. It is a *minimum interval*, so it costs nothing on a site
+whose responses are already slower than the delay.
+
 Read [references/measurement.md](references/measurement.md) before interpreting anything,
 especially: re-measure warm after any cache flush, and treat unmeasured resources as unknown
 rather than zero.

@@ -4,6 +4,7 @@
 Usage:
   python3 perf-probe.py --site https://example.com [--urls-file PATH | --url U --url U ...]
                         [--json PATH] [--label NAME] [--repeats N] [--quick] [--quiet]
+                        [--delay SECONDS] [--user-agent STRING]
   python3 perf-probe.py --diff A.json B.json
 
 Origin TTFB uses a unique cache-busting query value for every request. Edge
@@ -22,6 +23,7 @@ import shutil
 import statistics
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from typing import Dict, Iterable, List, Optional, Sequence, Set, Tuple
@@ -45,6 +47,8 @@ CURL_SHUTDOWN_GRACE_SECONDS = 5
 SUBPROCESS_TIMEOUT_SECONDS = HTTP_TIMEOUT_SECONDS + CURL_SHUTDOWN_GRACE_SECONDS
 # Six concurrent HEAD requests keep payload walks useful without resembling an attack on shared hosting.
 HEAD_WORKER_COUNT = 6
+# A minute between requests is already extreme pacing; beyond it a typo has become a hang.
+MAX_REQUEST_DELAY_SECONDS = 60.0
 # Five MiB is ample for text HTML/CSS while bounding memory on malformed or hostile responses.
 MAX_TEXT_RESPONSE_BYTES = 5 * 1024 * 1024
 # Three import levels cover normal compiled themes while bounding cyclic CSS dependency graphs.
@@ -216,7 +220,48 @@ def curl_command(curl_binary: str, extra_args: Sequence[str]) -> List[str]:
     ]
 
 
+class RequestPacer:
+    """Bound the aggregate request rate across every worker thread.
+
+    Some sites throttle sustained probing, and a throttled read is a fabricated finding: the
+    probe would faithfully time the site's rate limiter and report it as the site's performance.
+    Pacing is the operator's lever for that.
+
+    The interval is enforced globally rather than per thread, so the cap holds whatever the
+    worker count is — `--delay 1` means at most one request per second in total, not one per
+    second per worker.
+
+    **The wait cannot contaminate a measurement.** curl times the request internally and reports
+    `time_starttransfer`, so sleeping before curl is invoked changes when the request happens,
+    never what it measures.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._min_interval = 0.0
+        self._next_allowed = 0.0
+
+    def configure(self, delay_seconds: float) -> None:
+        self._min_interval = max(0.0, delay_seconds)
+        self._next_allowed = 0.0
+
+    def wait(self) -> None:
+        if self._min_interval <= 0:
+            return
+        with self._lock:
+            now = time.monotonic()
+            remaining = self._next_allowed - now
+            if remaining > 0:
+                time.sleep(remaining)
+                now = time.monotonic()
+            self._next_allowed = now + self._min_interval
+
+
+PACER = RequestPacer()
+
+
 def run_curl(curl_binary: str, extra_args: Sequence[str]) -> Dict[str, object]:
+    PACER.wait()
     try:
         completed = subprocess.run(
             curl_command(curl_binary, extra_args),
@@ -1175,6 +1220,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repeats", type=positive_integer, default=DEFAULT_REPEATS, help="timing samples per path")
     parser.add_argument("--quick", action="store_true", help="skip payload discovery and HEAD sizing")
     parser.add_argument(
+        "--delay",
+        type=float,
+        default=0.0,
+        metavar="SECONDS",
+        help=(
+            "minimum seconds between requests, enforced across all workers. Use when a site "
+            "rate-limits sustained probing: a throttled read reports the rate limiter's timing "
+            "as the site's own. Increases total run time proportionally. Default 0."
+        ),
+    )
+    parser.add_argument(
         "--user-agent",
         metavar="STRING",
         help=(
@@ -1262,6 +1318,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         apply_user_agent(getattr(args, "user_agent", None))
     except ValueError as exc:
         parser.error(str(exc))
+    delay = getattr(args, "delay", 0.0) or 0.0
+    if delay < 0 or delay > MAX_REQUEST_DELAY_SECONDS:
+        parser.error(
+            "--delay must be between 0 and {} seconds".format(MAX_REQUEST_DELAY_SECONDS)
+        )
+    PACER.configure(delay)
     if args.diff:
         measurement_values_present = any(
             [args.site, args.urls_file, args.url, args.json, args.quick, args.quiet]
