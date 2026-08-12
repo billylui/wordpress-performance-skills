@@ -54,6 +54,8 @@ METRIC_DECIMAL_PLACES = 1
 # HTTP 2xx and 3xx responses are usable after curl has followed redirects.
 HTTP_USABLE_MIN = 200
 HTTP_ERROR_MIN = 400
+# These are the registered media types that positively identify an HTML document.
+HTML_CONTENT_TYPES = ("text/html", "application/xhtml+xml")
 # The reference implementation and contract examples report binary kilobytes.
 BYTES_PER_KB = 1024.0
 # Curl reports seconds while the metrics contract requires milliseconds.
@@ -156,6 +158,12 @@ def median(values: Iterable[float]) -> Optional[float]:
 def sanitize_error(value: str) -> str:
     """Keep operator-facing errors actionable, single-line, and diff-friendly."""
     return " ".join(value.replace("\x00", "").split())
+
+
+def is_html_content_type(value: str) -> bool:
+    """Return whether a declared Content-Type positively identifies HTML."""
+    media_type = value.partition(";")[0].strip().lower()
+    return media_type in HTML_CONTENT_TYPES
 
 
 def find_curl() -> Optional[str]:
@@ -823,8 +831,9 @@ def measure_url(
             and HTTP_USABLE_MIN <= row["http_status"] < HTTP_ERROR_MIN
         )
         declared_content_type = html_source.get("content_type", "") if html_source else ""
-        if usable and declared_content_type and "html" not in declared_content_type:
-            errors.append("quick probe requires HTML but received {}".format(declared_content_type))
+        if usable and not is_html_content_type(declared_content_type):
+            received = declared_content_type or "no content type"
+            errors.append("quick probe requires HTML but received {}".format(received))
             usable = False
         row["errors"] = sorted(set(errors))
         return row, reachable, usable
@@ -836,7 +845,7 @@ def measure_url(
         and HTTP_USABLE_MIN <= row["http_status"] < HTTP_ERROR_MIN
     ):
         declared_content_type = html_source.get("content_type", "") if html_source else ""
-        if declared_content_type and "html" not in declared_content_type:
+        if declared_content_type and not is_html_content_type(declared_content_type):
             errors.append("payload walk requires HTML but received {}".format(declared_content_type))
         else:
             body_result = fetch_text(curl_binary, url)
