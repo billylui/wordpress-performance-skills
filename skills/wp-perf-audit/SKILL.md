@@ -85,7 +85,7 @@ is visible to file-size analysis, and both outrank compressing an image.
 
 ### 5. Report
 
-Use [templates/findings-report.md](../../templates/findings-report.md). Two sections are
+Use [references/findings-report-template.md](references/findings-report-template.md). Two sections are
 mandatory and must never be dropped: **"What could not be checked"** and **"What did not work"**.
 A report containing only wins is a sales document, and the next person to touch the site pays for
 the omission.

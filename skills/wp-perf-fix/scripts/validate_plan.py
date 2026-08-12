@@ -1175,11 +1175,11 @@ def render_selftest_problems(problems: Sequence[Problem]) -> List[str]:
 
 
 def run_selftest() -> int:
-    """Exercise one accepted plan and four unsafe plans using temporary fixtures."""
+    """Exercise accepted and unsafe plans using temporary fixtures."""
 
     lines = ["validate_plan.py self-test"]
     passed = 0
-    total = 5
+    total = 10
     try:
         with tempfile.TemporaryDirectory(prefix="validate-plan-selftest-") as temp_name:
             root = Path(temp_name)
@@ -1205,28 +1205,150 @@ def run_selftest() -> int:
                 )
                 lines.extend(render_selftest_problems(valid_problems))
 
-            cases: List[Tuple[str, Dict[str, Any], str]] = []
+            cases: List[
+                Tuple[str, Dict[str, Any], str, Optional[Dict[str, Any]]]
+            ] = []
 
             prohibited = copy.deepcopy(base)
             prohibited["changes"][0]["risk_lane"] = "prohibited"
-            cases.append(("prohibited change refused", prohibited, "risk_lane"))
+            cases.append(
+                ("prohibited change refused", prohibited, "risk_lane", None)
+            )
 
             missing_snapshot = copy.deepcopy(base)
             missing_snapshot["changes"][0]["snapshot"]["artifact"] = "missing.bak"
-            cases.append(("missing snapshot refused", missing_snapshot, "snapshot"))
+            cases.append(
+                ("missing snapshot refused", missing_snapshot, "snapshot", None)
+            )
 
             approval_not_granted = copy.deepcopy(base)
             approval_not_granted["changes"][0]["approval"]["granted"] = False
-            cases.append(("ungranted approval refused", approval_not_granted, "approval"))
+            cases.append(
+                (
+                    "ungranted approval refused",
+                    approval_not_granted,
+                    "approval",
+                    None,
+                )
+            )
 
             wrong_purge = copy.deepcopy(base)
             wrong_purge["changes"][0]["purge_layers"] = ["edge"]
             cases.append(
-                ("purge of a layer not present refused", wrong_purge, "purge_layers")
+                (
+                    "purge of a layer not present refused",
+                    wrong_purge,
+                    "purge_layers",
+                    None,
+                )
             )
 
-            for label, case, expected_rule in cases:
-                case_problems = validate_plan(case, plan_path, root)
+            approval_not_required = copy.deepcopy(base)
+            approval_not_required["changes"][0]["approval"] = {
+                "granted": False,
+                "required": False,
+            }
+            cases.append(
+                (
+                    "plan-declared optional approval refused",
+                    approval_not_required,
+                    "approval",
+                    None,
+                )
+            )
+
+            snapshot_not_required = copy.deepcopy(base)
+            snapshot_not_required["changes"][0]["snapshot"] = {
+                "artifact": "missing.bak",
+                "required": False,
+            }
+            cases.append(
+                (
+                    "plan-declared optional snapshot refused",
+                    snapshot_not_required,
+                    "snapshot",
+                    None,
+                )
+            )
+
+            direct_theme_file = copy.deepcopy(base)
+            direct_theme_file["tier"] = 3
+            direct_theme_file["changes"][0]["target"] = {
+                "identifier": "functions.php",
+                "kind": "theme-file",
+            }
+            cases.append(
+                (
+                    "direct theme-file change refused",
+                    direct_theme_file,
+                    "risk_lane",
+                    None,
+                )
+            )
+
+            mismatched_stack = {
+                "cache_layers": [
+                    {
+                        "confidence": "none",
+                        "evidence": [],
+                        "layer": "edge",
+                        "value": "unknown",
+                    },
+                    {
+                        "confidence": "high",
+                        "evidence": ["selftest: server cache detected"],
+                        "layer": "server",
+                        "value": "nginx-fastcgi",
+                    },
+                    {
+                        "confidence": "none",
+                        "evidence": [],
+                        "layer": "page-plugin",
+                        "value": "unknown",
+                    },
+                    {
+                        "confidence": "none",
+                        "evidence": [],
+                        "layer": "object",
+                        "value": "unknown",
+                    },
+                ],
+                "profile": {
+                    "host_class": {
+                        "confidence": "high",
+                        "evidence": ["selftest: host confirmed"],
+                        "value": "self-managed",
+                    }
+                },
+                "schema_version": SCHEMA_VERSION,
+                "target": "https://selftest-url/",
+                "tool": "fingerprint",
+            }
+            cases.append(
+                (
+                    "stack origin mismatch refused",
+                    copy.deepcopy(base),
+                    "stack_origin",
+                    mismatched_stack,
+                )
+            )
+
+            tier_one_option = copy.deepcopy(base)
+            tier_one_option["changes"][0]["target"] = {
+                "identifier": "selftest-option",
+                "kind": "wp-option",
+            }
+            cases.append(
+                (
+                    "tier 1 raw wp-option change refused",
+                    tier_one_option,
+                    "tier",
+                    None,
+                )
+            )
+
+            for label, case, expected_rule, case_stack in cases:
+                case_problems = validate_plan(case, plan_path, root, case_stack)
                 has_expected_rule = any(
                     problem.rule == expected_rule for problem in case_problems
                 )

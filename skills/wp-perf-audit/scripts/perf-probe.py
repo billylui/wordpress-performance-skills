@@ -66,6 +66,8 @@ REPORT_URL_WIDTH = 48
 DEFAULT_LABEL = "baseline"
 CACHE_BUSTER_PARAMETER = "_wp_perf_probe"
 CURL_TIMING_MARKER = "__WP_PERF_PROBE_TIMING__"
+# A dedicated trailer separates a bounded text body from curl's final HTTP status.
+CURL_TEXT_STATUS_MARKER = "__WP_PERF_PROBE_TEXT_STATUS__"
 USER_AGENT = "wp-perf-probe/0.1 (read-only public performance measurement)"
 
 # Ordered from outer edge indicators toward increasingly generic cache indicators.
@@ -304,13 +306,43 @@ def timed_request(curl_binary: str, url: str) -> Dict[str, object]:
 
 
 def fetch_text(curl_binary: str, url: str) -> Dict[str, object]:
+    write_out = "\n{}%{{http_code}}".format(CURL_TEXT_STATUS_MARKER)
     result = run_curl(
         curl_binary,
-        ["--max-filesize", str(MAX_TEXT_RESPONSE_BYTES), "--output", "-", url],
+        [
+            "--max-filesize",
+            str(MAX_TEXT_RESPONSE_BYTES),
+            "--output",
+            "-",
+            "--write-out",
+            write_out,
+            url,
+        ],
     )
     if result["returncode"] != 0:
         return result
-    body = result["stdout"]
+    marker = "\n{}".format(CURL_TEXT_STATUS_MARKER).encode("ascii")
+    if marker not in result["stdout"]:
+        return {
+            "returncode": None,
+            "error": "curl returned no parseable HTTP status for text response",
+            "unreachable": False,
+        }
+    body, raw_status = result["stdout"].rsplit(marker, 1)
+    try:
+        http_status = int(raw_status.strip())
+    except ValueError:
+        return {
+            "returncode": None,
+            "error": "curl returned an invalid HTTP status for text response",
+            "unreachable": False,
+        }
+    if http_status < HTTP_USABLE_MIN or http_status >= HTTP_ERROR_MIN:
+        return {
+            "returncode": None,
+            "error": "HTTP {} while reading text response".format(http_status),
+            "unreachable": False,
+        }
     if len(body) > MAX_TEXT_RESPONSE_BYTES:
         return {
             "returncode": None,
@@ -785,8 +817,17 @@ def measure_url(
     html_bytes = html_source["size_bytes"] if html_source is not None else None
     if quick:
         row["html_kb"] = rounded(html_bytes / BYTES_PER_KB) if html_bytes is not None else None
+        usable = bool(
+            reachable
+            and row["http_status"] is not None
+            and HTTP_USABLE_MIN <= row["http_status"] < HTTP_ERROR_MIN
+        )
+        declared_content_type = html_source.get("content_type", "") if html_source else ""
+        if usable and declared_content_type and "html" not in declared_content_type:
+            errors.append("quick probe requires HTML but received {}".format(declared_content_type))
+            usable = False
         row["errors"] = sorted(set(errors))
-        return row, reachable, reachable
+        return row, reachable, usable
 
     usable = False
     if (
@@ -1237,7 +1278,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if reachable_count == 0:
         print("error: all target URLs were unreachable", file=sys.stderr)
         return 3
-    if not args.quick and usable_count == 0:
+    if usable_count == 0:
         print("error: target URLs were reachable but none supplied usable HTML", file=sys.stderr)
         return 4
     return 0

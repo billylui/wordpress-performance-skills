@@ -29,7 +29,8 @@ npx skills add billylui/wordpress-performance-skills
 ```
 
 **Manually** — copy `skills/wp-perf-audit/` and `skills/wp-perf-fix/` into `.claude/skills/` in
-your project, or `~/.claude/skills/` for every project.
+your project, or `~/.claude/skills/` for every project. Each skill directory is self-contained;
+nothing it needs at runtime lives outside it.
 
 Install `wp-perf-audit` alone if you only want measurement and reporting. It is read-only and
 touches nothing.
