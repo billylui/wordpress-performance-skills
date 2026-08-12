@@ -288,15 +288,30 @@ def main() -> int:
             record(bool(bound), "CONTROL: a checkout declared with --local-root DOES bind",
                    f"tier={doc['tier']['value']} deploy_path={doc['access'].get('deploy_path')}")
 
+            # The flag's main case: running from somewhere else entirely. An earlier version
+            # discovered the checkout only from the working directory, so --local-root silently
+            # did nothing unless you were already standing inside the checkout.
+            outside = tmp / "unrelated-working-dir"
+            outside.mkdir()
+            doc = capabilities_for(outside, base + "/", local_root=checkout)
+            bound = doc["access"].get("deploy_path") or doc["access"].get("wp_cli")
+            record(bool(bound), "CONTROL: --local-root works from a DIFFERENT working directory",
+                   f"tier={doc['tier']['value']} deploy_path={doc['access'].get('deploy_path')}")
+
             doc = capabilities_for(checkout, base + "/")
             unbound = not doc["access"].get("deploy_path") and not doc["access"].get("wp_cli")
             record(unbound, "the same checkout WITHOUT --local-root does not bind",
                    f"tier={doc['tier']['value']} deploy_path={doc['access'].get('deploy_path')}")
 
-            elsewhere = make_wordpress_checkout(tmp / "elsewhere", base)
-            doc = capabilities_for(checkout, base + "/", local_root=elsewhere)
+            # Under explicit declaration, whatever the operator names IS the binding — so
+            # "--local-root points somewhere else" is no longer a meaningful negative; it is the
+            # operator changing their mind. The guard that still matters is that a declared path
+            # which is not a WordPress checkout binds nothing.
+            not_wordpress = tmp / "just-a-folder"
+            not_wordpress.mkdir()
+            doc = capabilities_for(checkout, base + "/", local_root=not_wordpress)
             unbound = not doc["access"].get("deploy_path") and not doc["access"].get("wp_cli")
-            record(unbound, "--local-root naming a DIFFERENT directory does not bind",
+            record(unbound, "--local-root naming a non-WordPress directory binds nothing",
                    f"tier={doc['tier']['value']} deploy_path={doc['access'].get('deploy_path')}")
     finally:
         server.shutdown()
