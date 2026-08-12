@@ -49,6 +49,10 @@ SUBPROCESS_TIMEOUT_SECONDS = HTTP_TIMEOUT_SECONDS + CURL_SHUTDOWN_GRACE_SECONDS
 HEAD_WORKER_COUNT = 6
 # A minute between requests is already extreme pacing; beyond it a typo has become a hang.
 MAX_REQUEST_DELAY_SECONDS = 60.0
+# 0 means no cap, which is the default: silently truncating a measurement is the failure this
+# tool exists to avoid, so the operator opts in.
+NO_ASSET_CAP = 0
+MAX_ASSETS = NO_ASSET_CAP
 # Five MiB is ample for text HTML/CSS while bounding memory on malformed or hostile responses.
 MAX_TEXT_RESPONSE_BYTES = 5 * 1024 * 1024
 # Three import levels cover normal compiled themes while bounding cyclic CSS dependency graphs.
@@ -140,6 +144,7 @@ METRICS_URL_KEYS = {
     "total_kb",
     "unsized_resources",
     "discovery_incomplete",
+    "asset_cap_applied",
     "errors",
 }
 METRICS_TOTAL_KEYS = {
@@ -258,6 +263,32 @@ class RequestPacer:
 
 
 PACER = RequestPacer()
+
+
+def select_within_cap(
+    ordered_resources: Sequence[Tuple[str, str]], cap: int
+) -> Tuple[List[Tuple[str, str]], int]:
+    """Choose which resources to size when a cap applies, and report how many were skipped.
+
+    Selection is a deterministic round-robin across resource kinds, not the first N of a sorted
+    list. A sorted prefix would take every `assets/a*.css` and reach no images at all, so the
+    per-kind breakdown of a capped run would describe the alphabet rather than the page. Taking
+    them in rotation keeps the shape of the page visible even when the walk is cut short.
+    """
+
+    if cap == NO_ASSET_CAP or len(ordered_resources) <= cap:
+        return list(ordered_resources), 0
+
+    by_kind: Dict[str, List[Tuple[str, str]]] = {}
+    for entry in ordered_resources:
+        by_kind.setdefault(entry[1], []).append(entry)
+
+    rotated: List[Tuple[str, str]] = []
+    while len(rotated) < len(ordered_resources):
+        for kind in list(by_kind):
+            if by_kind[kind]:
+                rotated.append(by_kind[kind].pop(0))
+    return rotated[:cap], len(ordered_resources) - cap
 
 
 def run_curl(curl_binary: str, extra_args: Sequence[str]) -> Dict[str, object]:
@@ -760,10 +791,17 @@ def payload_metrics(
     unsized = 0
 
     ordered_resources = sorted(resources.items())
+    selected_resources, skipped_by_cap = select_within_cap(ordered_resources, MAX_ASSETS)
+    if skipped_by_cap:
+        unsized += skipped_by_cap
+        errors.append(
+            "asset cap of {} reached: {} discovered resource(s) were not sized and are excluded "
+            "from the totals".format(MAX_ASSETS, skipped_by_cap)
+        )
     with concurrent.futures.ThreadPoolExecutor(max_workers=HEAD_WORKER_COUNT) as executor:
         futures = [
             executor.submit(head_size, curl_binary, asset_url, hint)
-            for asset_url, hint in ordered_resources
+            for asset_url, hint in selected_resources
         ]
         for future in futures:
             result = future.result()
@@ -781,6 +819,9 @@ def payload_metrics(
         # Resources a failed stylesheet read would have revealed are unknown in number, not just
         # in size, so discovery failure is reported rather than folded into the byte counts.
         "discovery_incomplete": discovery_incomplete,
+        # A capped total is a floor over a sample, not a page weight. Stated as its own field so
+        # a consumer cannot mistake it for a complete measurement.
+        "asset_cap_applied": bool(skipped_by_cap),
     }
     for kind in ASSET_KINDS:
         result_metrics["{}_kb".format(kind)] = rounded(buckets[kind] / BYTES_PER_KB)
@@ -812,6 +853,7 @@ def empty_url_row(url: str) -> Dict[str, object]:
         "total_kb": None,
         "unsized_resources": 0,
         "discovery_incomplete": False,
+        "asset_cap_applied": False,
         "errors": [],
     }
 
@@ -1126,6 +1168,7 @@ def human_report(document: Dict[str, object]) -> str:
             "  Measurements immediately after a cache flush are transient and not comparable.",
             "  Warm the cache and re-measure before declaring a regression.",
             "  unknown payload values are never summed as zero.",
+            "  A capped run reports a floor over a sample, not a page weight.",
         ]
     )
     return "\n".join(lines)
@@ -1219,6 +1262,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--label", default=DEFAULT_LABEL, help="measurement label")
     parser.add_argument("--repeats", type=positive_integer, default=DEFAULT_REPEATS, help="timing samples per path")
     parser.add_argument("--quick", action="store_true", help="skip payload discovery and HEAD sizing")
+    parser.add_argument(
+        "--max-assets",
+        type=int,
+        default=NO_ASSET_CAP,
+        metavar="N",
+        help=(
+            "size at most N discovered resources during the payload walk. Use on very heavy "
+            "pages where a full walk would not finish. Resources are taken in rotation across "
+            "kinds so the breakdown stays representative, the skipped ones are counted in "
+            "unsized_resources, and asset_cap_applied marks the run so a capped total is never "
+            "mistaken for a page weight. Default 0, meaning no cap."
+        ),
+    )
     parser.add_argument(
         "--delay",
         type=float,
@@ -1324,6 +1380,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "--delay must be between 0 and {} seconds".format(MAX_REQUEST_DELAY_SECONDS)
         )
     PACER.configure(delay)
+    max_assets = getattr(args, "max_assets", NO_ASSET_CAP) or NO_ASSET_CAP
+    if max_assets < 0:
+        parser.error("--max-assets must be 0 (no cap) or a positive count")
+    global MAX_ASSETS
+    MAX_ASSETS = max_assets
     if args.diff:
         measurement_values_present = any(
             [args.site, args.urls_file, args.url, args.json, args.quick, args.quiet]

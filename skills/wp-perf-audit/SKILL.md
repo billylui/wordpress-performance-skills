@@ -112,6 +112,12 @@ enough that a burst would distort what you are measuring — a throttled read re
 limiter's timing as the site's own. It is a *minimum interval*, so it costs nothing on a site
 whose responses are already slower than the delay.
 
+**If the payload walk will not finish, cap it.** `--max-assets N` sizes at most N resources.
+A real audit of a heavy site abandoned the walk after ten minutes and lost its byte breakdown
+entirely; capped at 60 the same page completed in 80 seconds. Skipped resources are counted, and
+`asset_cap_applied` marks the run so its total is read as a floor over a sample rather than a
+page weight.
+
 Read [references/measurement.md](references/measurement.md) before interpreting anything,
 especially: re-measure warm after any cache flush, and treat unmeasured resources as unknown
 rather than zero.
