@@ -37,7 +37,7 @@ or when the configured edge mishandles the content it is meant to cache.
 Run the visitor-path/origin comparison and keep the JSON evidence:
 
 ```sh
-python3 skills/wp-perf-audit/scripts/perf-probe.py \
+python3 "$SKILL_DIR/scripts/perf-probe.py" \
   --site "$SITE_URL" --repeats 3 --quick --json edge-baseline.json
 ```
 
@@ -268,9 +268,9 @@ After changing and purging the intended layer, warm the canonical URL before mea
 an after document and compare it:
 
 ```sh
-python3 skills/wp-perf-audit/scripts/perf-probe.py \
+python3 "$SKILL_DIR/scripts/perf-probe.py" \
   --site "$SITE_URL" --repeats 3 --quick --label after --json edge-after.json
-python3 skills/wp-perf-audit/scripts/perf-probe.py \
+python3 "$SKILL_DIR/scripts/perf-probe.py" \
   --diff edge-baseline.json edge-after.json
 ```
 
