@@ -48,6 +48,9 @@ jobs:
       - name: No third-party egress
         run: python tools/check_no_egress.py
 
+      - name: Skill docs — links, reference depth, time-sensitive claims
+        run: python tools/check_skill_docs.py
+
       - name: Shell scripts parse
         run: |
           shopt -s globstar nullglob
