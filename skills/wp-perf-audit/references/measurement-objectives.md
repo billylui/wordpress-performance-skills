@@ -22,8 +22,9 @@ session actually has, rather than looking for a tool this document happens to na
 2. Take the first provider your session actually has. Do not assume a provider exists because it
    is listed, and do not skip a lower-preference provider that is present.
 3. If no provider is available, the objective is **unmeasured**. Record it as unmeasured with the
-   reason, in the scorecard slot it belongs to. See
-   [report-contract.md](report-contract.md).
+   reason, in the slot it belongs to in
+   [findings-report-template.md](findings-report-template.md) — an empty slot with a stated
+   reason, never an omitted row.
 4. **Never estimate, infer, or carry over a number from another tool or another run.** An
    invented metric is the one failure this project cannot tolerate; an empty slot with a reason
    is a complete answer.
