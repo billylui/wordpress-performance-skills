@@ -1082,8 +1082,9 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
             report_stream = sys.stderr if args.json == "-" else sys.stdout
             report_stream.write(human_report(document))
     except (OSError, UnicodeError) as exc:
-        print("Could not write output: " + str(exc), file=sys.stderr)
-        return 4
+        destination = args.json if args.json and args.json != "-" else "standard output"
+        print("Could not write output to {}: {}".format(destination, exc), file=sys.stderr)
+        return 2
     return 0
 
 

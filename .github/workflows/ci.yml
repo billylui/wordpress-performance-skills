@@ -51,6 +51,14 @@ jobs:
       - name: Skill docs — links, reference depth, time-sensitive claims
         run: python tools/check_skill_docs.py
 
+      - name: Plugin manifests match the documented install command
+        run: python tools/check_plugin_manifest.py
+
+      - name: Change-plan validator self-test
+        # The fix skill's gate is a safety device. If its own refusals stop working, every other
+        # guarantee in wp-perf-fix rests on nothing.
+        run: python skills/wp-perf-fix/scripts/validate_plan.py --selftest
+
       - name: Shell scripts parse
         run: |
           shopt -s globstar nullglob

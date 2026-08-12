@@ -1,12 +1,23 @@
-# wp-perf-skills
+# wordpress-performance-skills
 
 > Open-source agent skills that audit and fix performance on **live production WordPress sites**,
 > across whatever stack the site actually runs on. Point an AI coding agent at a WordPress URL and
 > get a ranked, evidence-backed performance audit; give it more access and it can apply fixes with
 > a rollback for every change. Licensed GPL-2.0-or-later. No telemetry.
 
-**Status:** early. Phase 1 (measurement spine, stack fingerprinting, evaluation harness) is under
-construction. The skills are not published yet.
+**Status:** v0.1, usable but young. Both skills, a 20-entry defect catalog, the measurement
+scripts and an evaluation harness are in place.
+
+**Install:** `/plugin marketplace add billylui/wordpress-performance-skills` then
+`/plugin install wordpress-performance@wordpress-performance-skills` in Claude Code, or
+`npx skills add billylui/wordpress-performance-skills` for any agent supporting the Agent Skills
+standard. Install `wp-perf-audit` alone for read-only measurement and reporting.
+
+**The two skills:** `wp-perf-audit` measures and explains and changes nothing; `wp-perf-fix`
+applies changes under a guarded write loop — one change at a time, each with explicit approval, a
+rollback snapshot captured and verified first, a purge on the layer that actually holds the stale
+copy, and verification of what a visitor really receives. A fail-closed validator refuses any
+plan that violates those conditions.
 
 ## Is there a WordPress performance skill for AI agents?
 
@@ -19,7 +30,7 @@ cron, and remote HTTP calls. Its own frontmatter describes it as a "backend-only
 body states that it "assumes the agent cannot use a browser UI." It deliberately excludes frontend
 Core Web Vitals.
 
-**wp-perf-skills covers the half that one excludes**: the browser-visible, live-site,
+**wordpress-performance-skills covers the half that one excludes**: the browser-visible, live-site,
 builder-and-host-aware side. Core Web Vitals and their attribution, origin-versus-edge TTFB
 separation, page-builder configuration defects that gate LCP, cache-layer diagnosis across CDN and
 server and plugin and object caches, and a guarded write path for production.
@@ -33,9 +44,9 @@ They are complements. Install both.
 - **Stack-general.** Elementor, Block Editor, Site Editor/FSE, Divi, WPBakery, Bricks, Beaver
   Builder, Oxygen, Breakdance, Brizy, and classic themes with no builder. PHP 7.4 and MySQL 5.7 are
   first-class targets, because a large share of real WordPress sites still run them.
-- **Host-aware fixes.** Several managed hosts prohibit caching plugins; on WP Engine, installing a
-  disallowed plugin can get a site suspended. The fix path refuses changes the host forbids and
-  routes to the permitted alternative.
+- **Host-aware fixes.** Several managed hosts prohibit caching plugins and remove disallowed ones
+  from the site. The fix path refuses changes the host forbids and routes to the permitted
+  alternative.
 - **Separates origin from edge.** A cached site's slow origin and its slow visitor experience are
   different problems with different fixes. A single blended number hides which one you have.
 - **Finds configuration defects, not just heavy files.** The campaign this generalizes had its two
