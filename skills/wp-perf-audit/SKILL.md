@@ -1,6 +1,8 @@
 ---
 name: wp-perf-audit
 description: Audits performance of a live WordPress site at whatever access level is available, from a public URL alone up to WP-CLI. Fingerprints the stack (page builder, theme, caching layers, CDN, host class, multilingual plugin), measures origin-versus-edge TTFB, payload and Core Web Vitals, then reports ranked findings with evidence and states plainly what it could not check. Use when a WordPress site is slow, when asked to audit or improve WordPress speed, page load time, Core Web Vitals, LCP, INP, CLS, TTFB, PageSpeed or Lighthouse scores, when investigating WordPress caching, CDN, page-builder or plugin performance, or when asked why a WordPress page loads slowly. Read-only and safe against production.
+license: GPL-2.0-or-later
+compatibility: Requires a shell, curl, and Python 3.9+, plus outbound network access to the WordPress site being audited. A sandboxed runtime without network access cannot perform this audit.
 ---
 
 # WordPress performance audit
@@ -38,8 +40,8 @@ If you would rather resolve it in a shell, these are common install locations ac
 map of every harness:
 
 ```bash
-for d in ~/.claude/skills/wp-perf-audit .claude/skills/wp-perf-audit \
-         ~/.config/agent/skills/wp-perf-audit .agent/skills/wp-perf-audit \
+for d in .agents/skills/wp-perf-audit ~/.agents/skills/wp-perf-audit \
+         .claude/skills/wp-perf-audit ~/.claude/skills/wp-perf-audit \
          ./wp-perf-audit skills/wp-perf-audit; do
   [ -d "$d/scripts" ] && SKILL_DIR="$d" && break
 done
