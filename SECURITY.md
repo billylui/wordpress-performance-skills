@@ -47,7 +47,7 @@ you a minute rather than an afternoon.
   rollback snapshot captured beforehand, and a verification afterwards against what a visitor
   actually receives. Approval for one change is never approval for the next.
 - **Host constraints are a hard gate, not a suggestion.** Several managed hosts prohibit
-  caching plugins; on WP Engine, installing a disallowed plugin can get a site suspended. The
+  caching plugins, and remove disallowed ones from the site. The
   fix skill refuses to propose a change its host profile forbids, and routes to the permitted
   path instead.
 - **Credentials stay outside the repo.** Nothing here asks you to commit a secret. Live-site
