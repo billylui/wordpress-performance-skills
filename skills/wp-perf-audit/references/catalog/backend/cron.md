@@ -24,7 +24,7 @@ The page, template, and payload are unchanged, so the long tail rather than the 
 
 ### At tier 0 (public URL only)
 
-Run `python3 skills/wp-perf-audit/scripts/perf-probe.py --site "$SITE_URL" --repeats 9 --quick --json baseline.json` for the same URL.
+Run `python3 "$SKILL_DIR/scripts/perf-probe.py" --site "$SITE_URL" --repeats 9 --quick --json baseline.json` for the same URL.
 Inspect `origin_ttfb_samples_ms`, not only `origin_ttfb_ms`: the script deliberately ships raw
 samples beside the median so occasional spikes remain visible.
 
@@ -83,7 +83,7 @@ maintenance, and plugin jobs. Running due events can send messages or mutate ext
 ## Verify
 
 After the upstream change, warm caches and repeat the identical URL and sample count. Use
-`python3 skills/wp-perf-audit/scripts/perf-probe.py --diff baseline.json after.json`; require a tighter raw origin sample distribution
+`python3 "$SKILL_DIR/scripts/perf-probe.py" --diff baseline.json after.json`; require a tighter raw origin sample distribution
 and confirm scheduled jobs still run through their intended path.
 
 ## Rollback

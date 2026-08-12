@@ -23,12 +23,12 @@ assume that a production site uses a modern PHP or MySQL runtime.
 
 ### At tier 0 (public URL only)
 
-Run `python3 skills/wp-perf-audit/scripts/perf-probe.py --site "$SITE_URL" --repeats 7 --quick --json baseline.json` across unrelated
+Run `python3 "$SKILL_DIR/scripts/perf-probe.py" --site "$SITE_URL" --repeats 7 --quick --json baseline.json` across unrelated
 URLs and a deliberately missing path, then verify the 404 row's `http_status`. Uniformly slow
 `origin_ttfb_ms` is consistent with fixed runtime or bootstrap cost, but cannot distinguish the
 runtime from autoload bloat, always-on plugins, or a synchronous HTTP call.
 
-Run `python3 skills/wp-perf-audit/scripts/fingerprint.py "$SITE_URL" --json stack.json`. PHP is known only when an explicit
+Run `python3 "$SKILL_DIR/scripts/fingerprint.py" "$SITE_URL" --json stack.json`. PHP is known only when an explicit
 `X-Powered-By` response header publishes it. PHP is usually not determinable at tier 0 because
 hosts strip that header; the script then
 reports `profile.php_version.value` as `unknown` and notes why tier 0 cannot determine it.
@@ -83,7 +83,7 @@ differences, or irreversible data migrations. Opcache changes can alter memory u
 ## Verify
 
 Test the site and critical workflows on staging first. After production change and cache warming,
-repeat the identical URL set and use `python3 skills/wp-perf-audit/scripts/perf-probe.py --diff baseline.json after.json`; also rerun the
+repeat the identical URL set and use `python3 "$SKILL_DIR/scripts/perf-probe.py" --diff baseline.json after.json`; also rerun the
 upstream profile and check PHP logs for new errors.
 
 ## Rollback

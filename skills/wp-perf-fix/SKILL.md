@@ -28,6 +28,21 @@ pass asks *is it safe to execute right now*, which additionally requires that ap
 actually granted and the snapshot actually exists. A single pass cannot do both: the things the
 second gate checks for do not exist yet when the first one runs.
 
+### 0. Locate the scripts
+
+The scripts live in **this skill's own `scripts/` directory**, which is not the working
+directory — you will normally be running inside the operator's project. Resolve it once, taking
+the first path that exists, and use `$SKILL_DIR` in every command below:
+
+```bash
+for d in ~/.claude/skills/wp-perf-fix .claude/skills/wp-perf-fix skills/wp-perf-fix; do
+  [ -d "$d/scripts" ] && SKILL_DIR="$d" && break
+done
+echo "$SKILL_DIR"
+```
+
+If none exists, say so rather than guessing a path — the skill is not installed where you expect.
+
 ### 1. Plan
 
 Write a change plan to disk before touching anything — schema in
@@ -42,7 +57,7 @@ a change that did nothing gets recorded as a win.
 ### 2. Validate — preflight
 
 ```bash
-python3 skills/wp-perf-fix/scripts/validate_plan.py plan.json --stack stack.json --preflight
+python3 "$SKILL_DIR/scripts/validate_plan.py" plan.json --stack stack.json --preflight
 ```
 
 **A non-zero exit stops the run.** Do not apply a change from a plan that failed validation, and
@@ -77,7 +92,7 @@ incident. Verify the file, do not assume the command worked.
 ### 4b. Validate — execution readiness
 
 ```bash
-python3 skills/wp-perf-fix/scripts/validate_plan.py plan.json --stack stack.json
+python3 "$SKILL_DIR/scripts/validate_plan.py" plan.json --stack stack.json
 ```
 
 The same checks as preflight, plus the two that can only be true by now: approval actually
@@ -102,8 +117,8 @@ Not what the command returned. A successful command is not proof of a successful
 ### 8. Measure, warm
 
 ```bash
-python3 skills/wp-perf-audit/scripts/perf-probe.py --site <URL> --label after --json after.json
-python3 skills/wp-perf-audit/scripts/perf-probe.py --diff before.json after.json
+python3 "$SKILL_DIR/../wp-perf-audit/scripts/perf-probe.py" --site <URL> --label after --json after.json
+python3 "$SKILL_DIR/../wp-perf-audit/scripts/perf-probe.py" --diff before.json after.json
 ```
 
 **Readings taken immediately after a purge are transient.** Warm the cache and re-measure before

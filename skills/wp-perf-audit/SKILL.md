@@ -26,10 +26,25 @@ a full Core Web Vitals investigation, at any access level.
 Work in this order. Each step constrains the next, and skipping step 1 is how audits end up
 giving advice for a stack the site is not running.
 
+### 0. Locate the scripts
+
+The scripts live in **this skill's own `scripts/` directory**, which is not the working
+directory — you will normally be running inside the operator's project. Resolve it once, taking
+the first path that exists, and use `$SKILL_DIR` in every command below:
+
+```bash
+for d in ~/.claude/skills/wp-perf-audit .claude/skills/wp-perf-audit skills/wp-perf-audit; do
+  [ -d "$d/scripts" ] && SKILL_DIR="$d" && break
+done
+echo "$SKILL_DIR"
+```
+
+If none exists, say so rather than guessing a path — the skill is not installed where you expect.
+
 ### 1. Fingerprint the stack — always first
 
 ```bash
-python3 skills/wp-perf-audit/scripts/fingerprint.py <URL> --json /tmp/stack.json
+python3 "$SKILL_DIR/scripts/fingerprint.py" <URL> --json /tmp/stack.json
 ```
 
 Returns builder, theme, cache layers, CDN, host class, multilingual plugin, WooCommerce and
@@ -42,7 +57,7 @@ tier 0 is correct behaviour, not a failure. Details in [references/stack-profile
 ### 2. Establish the access tier
 
 ```bash
-python3 skills/wp-perf-audit/scripts/capabilities.py --target <URL> --json /tmp/caps.json
+python3 "$SKILL_DIR/scripts/capabilities.py" --target <URL> --json /tmp/caps.json
 ```
 
 Gives the confirmed tier and, more importantly, `can_measure` and `cannot_measure`. Those two
@@ -54,7 +69,7 @@ deploy access to a site the operator cannot touch. When the operator confirms th
 target, declare it:
 
 ```bash
-python3 skills/wp-perf-audit/scripts/capabilities.py --target <URL> --local-root /path/to/wordpress
+python3 "$SKILL_DIR/scripts/capabilities.py" --target <URL> --local-root /path/to/wordpress
 ```
 
 Tier 0 (a public URL, no credentials) is a complete audit of the frontend and cache layers — not
@@ -64,7 +79,7 @@ adds and how to ask for more without pushing.
 ### 3. Measure
 
 ```bash
-python3 skills/wp-perf-audit/scripts/perf-probe.py --site <URL> --repeats 3 --json /tmp/before.json
+python3 "$SKILL_DIR/scripts/perf-probe.py" --site <URL> --repeats 3 --json /tmp/before.json
 ```
 
 **Origin TTFB and edge TTFB are separate numbers and must stay separate.** Origin is measured

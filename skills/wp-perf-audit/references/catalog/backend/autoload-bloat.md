@@ -23,7 +23,7 @@ WordPress render; misses, uncached routes, and logged-in requests still pay the 
 
 ### At tier 0 (public URL only)
 
-Run `python3 skills/wp-perf-audit/scripts/perf-probe.py --site "$SITE_URL" --repeats 7 --quick --json baseline.json` against a mix of
+Run `python3 "$SKILL_DIR/scripts/perf-probe.py" --site "$SITE_URL" --repeats 7 --quick --json baseline.json` against a mix of
 unrelated URLs. Add `--url` once per target, including a real page and a deliberately missing
 path, then verify that the missing path's `http_status` is genuinely 404 rather than a soft 200.
 
@@ -83,7 +83,7 @@ behavior. The owning component and a restorable database artifact must be known 
 ## Verify
 
 Warm every relevant cache layer, repeat the identical URL set and sample count, then run
-`python3 skills/wp-perf-audit/scripts/perf-probe.py --diff baseline.json after.json`. Require lower `origin_ttfb_ms` without HTTP or
+`python3 "$SKILL_DIR/scripts/perf-probe.py" --diff baseline.json after.json`. Require lower `origin_ttfb_ms` without HTTP or
 functional regressions; an immediate post-purge miss is not comparable.
 
 ## Rollback

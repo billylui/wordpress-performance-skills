@@ -33,7 +33,7 @@ Pages transfer CSS or JavaScript for features they do not use, or every request 
 Use a payload walk and retain the JSON baseline:
 
 ```sh
-python3 skills/wp-perf-audit/scripts/perf-probe.py --site https://example.com --repeats 3 --json baseline.json
+python3 "$SKILL_DIR/scripts/perf-probe.py" --site https://example.com --repeats 3 --json baseline.json
 ```
 
 For each representative page, inventory exact request URLs under `/wp-content/plugins/<slug>/`, transferred bytes, initiator, render-blocking position, and whether the page actually renders the plugin's feature. A vendor-namespaced asset path is strong ownership evidence for the asset, but it is not proof that the plugin caused all page delay.
@@ -132,7 +132,7 @@ Conditional dequeues can remove a dependency used by a modal, form, checkout, co
 After purging the affected `page-plugin`, `server`, and `edge` layers, warm the same URLs and compare against the saved baseline with:
 
 ```sh
-python3 skills/wp-perf-audit/scripts/perf-probe.py --diff baseline.json after.json
+python3 "$SKILL_DIR/scripts/perf-probe.py" --diff baseline.json after.json
 ```
 
 Verify both performance and behavior:

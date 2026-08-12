@@ -37,7 +37,7 @@ High-Performance Order Storage (HPOS) moves orders out of the posts and postmeta
 Run the public stack detector and retain its evidence-bearing output:
 
 ```sh
-python3 skills/wp-perf-audit/scripts/fingerprint.py https://example.com/ --pages 2 --json fingerprint.json --quiet
+python3 "$SKILL_DIR/scripts/fingerprint.py" https://example.com/ --pages 2 --json fingerprint.json --quiet
 ```
 
 `profile.woocommerce.value: true` is supported by exact public evidence such as `woocommerce*` class tokens, a `/plugins/woocommerce/` asset path, or a `wc-ajax` endpoint reference. A false or `unknown` result from a small public crawl does not prove that no store exists; probe a known product URL or confirm at tier 1.

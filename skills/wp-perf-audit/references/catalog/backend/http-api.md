@@ -24,7 +24,7 @@ frontend work have not changed.
 
 ### At tier 0 (public URL only)
 
-Run `python3 skills/wp-perf-audit/scripts/perf-probe.py --site "$SITE_URL" --repeats 9 --quick --json baseline.json` and inspect the
+Run `python3 "$SKILL_DIR/scripts/perf-probe.py" --site "$SITE_URL" --repeats 9 --quick --json baseline.json` and inspect the
 raw `origin_ttfb_samples_ms` alongside the median `origin_ttfb_ms`. Repeat for unrelated pages and
 a deliberately missing path, verifying its `http_status` is 404.
 
@@ -82,7 +82,7 @@ asynchronously can change when users observe completion.
 ## Verify
 
 Warm relevant caches, reproduce both normal and failure-path conditions, and rerun the same sample
-set. Use `python3 skills/wp-perf-audit/scripts/perf-probe.py --diff baseline.json after.json`; require bounded origin samples and verify
+set. Use `python3 "$SKILL_DIR/scripts/perf-probe.py" --diff baseline.json after.json`; require bounded origin samples and verify
 the feature's success, timeout, and fallback behavior.
 
 ## Rollback

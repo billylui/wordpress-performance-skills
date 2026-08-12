@@ -35,7 +35,7 @@ platform. It is a refusal gate, not a compatibility guide.
    `fingerprint.py`. The real invocation is:
 
    ```sh
-   python3 skills/wp-perf-audit/scripts/fingerprint.py URL --json stack.json
+   python3 "$SKILL_DIR/../wp-perf-audit/scripts/fingerprint.py" URL --json stack.json
    ```
 
 2. A low-confidence host match does not authorize a write. Confirm the provider and exact hosting
