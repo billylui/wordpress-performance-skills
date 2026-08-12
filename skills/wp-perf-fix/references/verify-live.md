@@ -153,9 +153,9 @@ the pre-change baseline.
 Using the real `perf-probe.py` flags:
 
 ```sh
-python3 skills/wp-perf-audit/scripts/perf-probe.py \
+python3 "$SKILL_DIR/../wp-perf-audit/scripts/perf-probe.py" \
   --site "$SITE_URL" --repeats 3 --label after --json after.json
-python3 skills/wp-perf-audit/scripts/perf-probe.py \
+python3 "$SKILL_DIR/../wp-perf-audit/scripts/perf-probe.py" \
   --diff before.json after.json
 ```
 

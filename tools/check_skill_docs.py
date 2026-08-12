@@ -55,6 +55,9 @@ TIME_SENSITIVE_PATTERNS = (
     ),
 )
 
+# A script invoked through a path rooted at this repository rather than at the skill itself.
+REPO_RELATIVE_SCRIPT_RE = re.compile(r"python3?\s+skills/[a-z0-9-]+/scripts/")
+
 # Lines carrying this marker are exempt: historical notes are allowed to name a version or date
 # as long as they are explicitly labelled as history.
 HISTORY_MARKERS = ("<details>", "historical", "old pattern", "deprecated")
@@ -111,7 +114,20 @@ def check_skill(skill_dir: Path, repo_root: Path) -> list[str]:
                 f"SKILL.md or fold it into the entry that references it"
             )
 
-    # --- 3. no time-sensitive claims -----------------------------------------------------
+    # --- 3. no repo-root-relative script invocations --------------------------------------
+    # A skill runs from the operator's project, not from this repository, so
+    # `python3 skills/<name>/scripts/x.py` resolves only when someone happens to be sitting in
+    # this checkout. Installed to ~/.claude/skills/ it is a "No such file" on the first command
+    # of the audit — which is exactly how it failed the first time it was used for real.
+    for path in md_files:
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            if REPO_RELATIVE_SCRIPT_RE.search(line):
+                problems.append(
+                    f"{rel(path)}:{lineno}: script invoked by a repo-root-relative path; resolve "
+                    f"the skill directory first and use \"$SKILL_DIR/scripts/…\"\n    {line.strip()}"
+                )
+
+    # --- 4. no time-sensitive claims -----------------------------------------------------
     for path in md_files:
         for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
             lowered = line.lower()

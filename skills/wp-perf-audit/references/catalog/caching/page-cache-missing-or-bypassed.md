@@ -37,7 +37,7 @@ for visitors.
 Start with the repository probe, preserving the separate medians and raw samples:
 
 ```sh
-python3 skills/wp-perf-audit/scripts/perf-probe.py \
+python3 "$SKILL_DIR/scripts/perf-probe.py" \
   --site "$SITE_URL" --repeats 3 --quick --json cache-baseline.json
 ```
 
@@ -267,11 +267,11 @@ Capture a before document, apply the one approved change, purge the owning layer
 URL, and capture an after document:
 
 ```sh
-python3 skills/wp-perf-audit/scripts/perf-probe.py \
+python3 "$SKILL_DIR/scripts/perf-probe.py" \
   --site "$SITE_URL" --repeats 3 --quick --label before --json before.json
-python3 skills/wp-perf-audit/scripts/perf-probe.py \
+python3 "$SKILL_DIR/scripts/perf-probe.py" \
   --site "$SITE_URL" --repeats 3 --quick --label after --json after.json
-python3 skills/wp-perf-audit/scripts/perf-probe.py --diff before.json after.json
+python3 "$SKILL_DIR/scripts/perf-probe.py" --diff before.json after.json
 ```
 
 Verification passes only when the cookie-free canonical URL is a stable warm response from the

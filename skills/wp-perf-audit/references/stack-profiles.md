@@ -20,7 +20,7 @@ guessing engine.
 ## Run the fingerprint
 
 ```text
-python3 skills/wp-perf-audit/scripts/fingerprint.py URL [--json PATH] [--quiet] [--pages N]
+python3 "$SKILL_DIR/scripts/fingerprint.py" URL [--json PATH] [--quiet] [--pages N]
 ```
 
 The positional `URL` must be an absolute public HTTP or HTTPS URL. The probe performs read-only
