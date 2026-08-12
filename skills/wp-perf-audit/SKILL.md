@@ -28,18 +28,30 @@ giving advice for a stack the site is not running.
 
 ### 0. Locate the scripts
 
-The scripts live in **this skill's own `scripts/` directory**, which is not the working
-directory — you will normally be running inside the operator's project. Resolve it once, taking
-the first path that exists, and use `$SKILL_DIR` in every command below:
+The scripts live in **this skill's own `scripts/` directory** — the directory you read this
+SKILL.md from. That is not your working directory: you will normally be running inside the
+operator's project. You already know the path you read this file from; use it, and set
+`$SKILL_DIR` to it for every command below.
+
+If you would rather resolve it in a shell, these are common install locations across agents.
+**Extend the list if yours installs skills elsewhere** — it is a convenience, not an exhaustive
+map of every harness:
 
 ```bash
-for d in ~/.claude/skills/wp-perf-audit .claude/skills/wp-perf-audit skills/wp-perf-audit; do
+for d in ~/.claude/skills/wp-perf-audit .claude/skills/wp-perf-audit \
+         ~/.config/agent/skills/wp-perf-audit .agent/skills/wp-perf-audit \
+         ./wp-perf-audit skills/wp-perf-audit; do
   [ -d "$d/scripts" ] && SKILL_DIR="$d" && break
 done
-echo "$SKILL_DIR"
+echo "${SKILL_DIR:-not found}"
 ```
 
-If none exists, say so rather than guessing a path — the skill is not installed where you expect.
+If the loop finds nothing, fall back to the absolute path of the directory containing this file
+rather than guessing — and if you genuinely cannot determine it, say so instead of proceeding.
+
+**This skill needs a shell, `curl`, `python3` (3.9+), and outbound network access to the site
+being audited.** A sandboxed runtime without network access cannot perform this audit at all;
+say so plainly rather than reporting an unreachable site as a finding.
 
 ### 1. Fingerprint the stack — always first
 
