@@ -640,6 +640,12 @@ def matching_header_evidence(headers: Dict[str, str], prefixes: Sequence[str]) -
     ]
 
 
+# Host markers whose names are not vendor-namespaced. A match on one of these identifies the
+# platform in practice but could in principle be emitted by something else, so it is reported at
+# medium confidence rather than high.
+NON_NAMESPACED_HOST_PREFIXES = ("x-gateway-",)
+
+
 def detect_host(headers: Dict[str, str], target: str) -> Signal:
     """Detect a hosting class only from vendor-namespaced public signals."""
 
@@ -648,6 +654,13 @@ def detect_host(headers: Dict[str, str], target: str) -> Signal:
         ("kinsta", ("x-kinsta-",)),
         ("siteground", ("x-sg-",)),
         ("godaddy", ("x-gd-",)),
+        # `x-gateway-*` is GoDaddy Managed WordPress's gateway cache, observed on two independent
+        # production sites behind Cloudflare. It is listed separately from `x-gd-` because the
+        # name is not vendor-namespaced: something else could plausibly emit an `x-gateway-`
+        # header, so this earns MEDIUM confidence rather than high, per the rubric in
+        # docs/CONTRACTS.md. Without it, GoDaddy Managed WordPress reports as `unknown` — which
+        # is what a live audit of a real GoDaddy site actually did.
+        ("godaddy", ("x-gateway-",)),
         ("cloudways", ("x-cw-",)),
         ("flywheel", ("x-fw-",)),
         ("pressable", ("x-pressable-",)),
@@ -666,7 +679,15 @@ def detect_host(headers: Dict[str, str], target: str) -> Signal:
             candidates.append((value, evidence))
     if candidates:
         value, evidence = sorted(candidates, key=lambda item: (-len(item[1]), item[0]))[0]
-        return make_signal(value, "high", evidence)
+        # A vendor-namespaced header effectively cannot come from anything else, so it earns
+        # high. A generically-named one is strong but not exclusive, so it earns medium and the
+        # agent treats it as a hypothesis to confirm at a higher tier.
+        namespaced = not any(
+            header_line.startswith("header: " + prefix)
+            for header_line in evidence
+            for prefix in NON_NAMESPACED_HOST_PREFIXES
+        )
+        return make_signal(value, "high" if namespaced else "medium", evidence)
 
     hostname = (urllib.parse.urlsplit(target).hostname or "").lower()
     hostname_labels = set(re.split(r"[.-]", hostname))
