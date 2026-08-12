@@ -24,6 +24,18 @@ specification. Almost every entry is a defect that only appeared under real use.
 - `skills/wp-perf-audit/references/measurement-objectives.md` — for every number the audit
   reports: the objective, the capability required, known providers in preference order, and the
   honest answer when a harness has none.
+- **`skills/wp-perf-audit/references/report-contract.md`** — the human deliverable is now under
+  contract, as the JSON always was. Mandatory sections in a fixed order, opening with a scorecard
+  whose ten rows are always present. The first real audit produced good content in an ad hoc
+  shape, and the metrics a reader looks for first were not visible anywhere in it.
+- **`check_report.py` validates a draft report before it is published** — sections present and in
+  order, every scorecard row present, each row either a value with a rating from the published
+  table or an explicit `unmeasured` with a reason, and no rating on a metric that has no value.
+  A template is advice; a checker is a contract. It ships inside the skill, so the agent can run
+  it on its own draft on any harness, with a `tools/` shim for use from a repository checkout.
+- `wp-perf-fix` step 9 re-emits that same scorecard before and after with a delta column, reusing
+  the audit's contract rather than defining a second one. A fixed before/after table is what makes
+  a null result legible.
 - `license` and `compatibility` frontmatter, so a conforming client can read the runtime
   requirements before executing anything.
 - `tools/adversarial_gate_tests.py`, `tools/check_plugin_manifest.py`, and the specification's
@@ -47,6 +59,16 @@ specification. Almost every entry is a defect that only appeared under real use.
   fallback list leads with the cross-agent `.agents/skills/` convention rather than Claude Code's.
 - Payload totals report measured bytes plus an explicit `unsized_resources` count. Strict null
   propagation let one unsizeable third-party asset erase an 11 MB image total.
+- **An unmeasured metric now occupies a labelled row with a reason instead of vanishing.** A
+  reader cannot tell a metric nobody measured from a healthy one when both look like silence, and
+  the report format is what decides which of those a reader sees.
+- The report format is stated as a standing instruction backed by a script, not as one numbered
+  step. A skill's `SKILL.md` is loaded once and not re-read, so guidance that must hold at the end
+  of a long audit cannot rest on a paragraph read at the start of it.
+- The two browser traps that cost a real audit its paint numbers — a hidden pane recording no
+  paint timing, and a load-only pass being unable to produce INP — moved from a reference file
+  into the audit skill's body. Both look like an unsupported browser when they are not, and an
+  agent that never loads the reference never learns to tell the difference.
 
 ### Fixed
 
