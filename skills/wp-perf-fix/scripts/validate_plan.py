@@ -172,11 +172,13 @@ RISK_LANE_RANK: Mapping[str, int] = {
 
 # The stack profile contract fixes both membership and order for cache-layer entries.
 STACK_CACHE_LAYER_ORDER = CACHE_LAYERS
-# Public host detection is authoritative for a production write only at high
-# confidence; the fingerprint's low-confidence hostname heuristic is a lead to
-# confirm, not permission. Cache-layer presence may also be corroborated at
-# medium confidence, but a single low-confidence signal cannot authorize a purge.
-HOST_CROSSCHECK_CONFIDENCES = ("high",)
+# Cache-layer presence may be corroborated at medium confidence, but a single
+# low-confidence signal cannot authorize a purge.
+#
+# There is deliberately no equivalent confidence gate for host_class: the plan's
+# host_class is the operator's declaration and the fingerprint is a contradiction
+# check, so gating on the fingerprint's confidence blocked correct plans while
+# leaving genuine contradictions unexamined. See cross_check_stack.
 CACHE_CROSSCHECK_CONFIDENCES = ("high", "medium")
 # WordPress site origins must be HTTP(S); other URI schemes cannot bind a live
 # fingerprint to a production change plan.
@@ -820,51 +822,6 @@ def validate_plan_cache_layers(
     return present_layers, bool(value)
 
 
-def known_signal_value(
-    signal: Any, field: str, rule: str, problems: List[Problem]
-) -> Optional[str]:
-    if not isinstance(signal, dict):
-        add_problem(
-            problems,
-            "plan",
-            rule,
-            "stack {} must be an evidence-bearing signal object".format(field),
-        )
-        return None
-    value = signal.get("value")
-    confidence = signal.get("confidence")
-    evidence = signal.get("evidence")
-    if not is_non_empty_string(value) or value == "unknown":
-        add_problem(
-            problems,
-            "plan",
-            rule,
-            "stack {} is unknown, so it cannot be positively cross-checked".format(field),
-        )
-        return None
-    if confidence not in HOST_CROSSCHECK_CONFIDENCES:
-        add_problem(
-            problems,
-            "plan",
-            rule,
-            "stack {} is not high-confidence, so it cannot authorize a production write".format(
-                field
-            ),
-        )
-        return None
-    if not isinstance(evidence, list) or not evidence or not all(
-        is_non_empty_string(item) for item in evidence
-    ):
-        add_problem(
-            problems,
-            "plan",
-            rule,
-            "stack {} has a known value without non-empty evidence".format(field),
-        )
-        return None
-    return str(value)
-
-
 def stack_cache_layers(stack: Mapping[str, Any], problems: List[Problem]) -> Optional[Set[str]]:
     entries = stack.get("cache_layers")
     if not isinstance(entries, list):
@@ -1129,20 +1086,41 @@ def cross_check_stack(
             "stack profile must be an object",
         )
     else:
-        stack_host = known_signal_value(
-            profile.get("host_class"),
-            "profile.host_class",
-            "stack_host_class",
-            problems,
-        )
+        # The plan's host_class is the OPERATOR'S DECLARATION, and the fingerprint is a
+        # contradiction check — not the other way round. The operator pays the hosting bill and
+        # knows what they are on; header sniffing is corroboration.
+        #
+        # Requiring the fingerprint to be high-confidence before any write deadlocked the common
+        # case. Detection is deliberately rated `medium` when a marker is not vendor-namespaced —
+        # GoDaddy Managed WordPress is identified by `x-gateway-*`, which is real evidence but
+        # not exclusive — so a real GoDaddy site could never authorize a fix at all.
+        #
+        # Worse, the old rule made the disagreement check unreachable: at medium confidence the
+        # helper returned None, so the branch that catches "this plan was built for a different
+        # host" never ran. It blocked the safe case and skipped the dangerous one.
+        #
+        # Now: agreement at any confidence proceeds, disagreement at any confidence refuses, and
+        # an unknown host leaves the operator's declaration standing alone — the same shape as
+        # --local-root, where inference that cannot reach certainty defers to a human assertion.
+        host_signal = profile.get("host_class")
         plan_host = document.get("host_class")
-        if stack_host is not None and plan_host != stack_host:
+        stack_host = (
+            host_signal.get("value") if isinstance(host_signal, dict) else None
+        )
+        if not is_non_empty_string(stack_host) or stack_host == "unknown":
+            pass  # No independent reading; the operator's declaration stands unchallenged.
+        elif plan_host != stack_host:
+            confidence = (
+                host_signal.get("confidence") if isinstance(host_signal, dict) else "unknown"
+            )
             add_problem(
                 problems,
                 "plan",
                 "stack_host_class",
-                "plan host_class {!r} does not match stack host_class {!r}".format(
-                    plan_host, stack_host
+                "plan declares host_class {!r} but the fingerprint of this site reads {!r} "
+                "({} confidence) — resolve which is correct before changing anything, because "
+                "host_class selects the constraints that decide what is permitted".format(
+                    plan_host, stack_host, confidence
                 ),
             )
 
