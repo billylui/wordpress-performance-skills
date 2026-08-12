@@ -101,7 +101,13 @@ with a unique cache-buster so every hit is a genuine miss — real WordPress ren
 the bare URL, what a visitor actually gets. A site with a fast edge and a slow origin has a
 different problem from one with both slow, and a blended number hides which.
 
-For Core Web Vitals (LCP, INP, CLS) you need a browser path — see
+**Read [references/measurement-objectives.md](references/measurement-objectives.md) before
+choosing tools.** It states each objective, the capability it needs, and the known providers in
+preference order — so you select from what *this* session actually has rather than looking for a
+tool some other harness happened to offer. It also records traps that have already cost a real
+audit, including a hidden browser pane silently suppressing all paint timing.
+
+For Core Web Vitals (LCP, INP, CLS) you need a browser path — see also
 [references/chrome-devtools-mcp.md](references/chrome-devtools-mcp.md). If none is available,
 **report Core Web Vitals as unmeasured. Never estimate them.**
 
