@@ -70,7 +70,25 @@ CACHE_BUSTER_PARAMETER = "_wp_perf_probe"
 CURL_TIMING_MARKER = "__WP_PERF_PROBE_TIMING__"
 # A dedicated trailer separates a bounded text body from curl's final HTTP status.
 CURL_TEXT_STATUS_MARKER = "__WP_PERF_PROBE_TEXT_STATUS__"
-USER_AGENT = "wp-perf-probe/0.1 (read-only public performance measurement)"
+# Identify as a browser, matching fingerprint.py.
+#
+# An honest bot string is the intuitive choice and it was the original one, but it measures the
+# wrong thing. Security plugins, hosting WAFs and CDN bot rules routinely answer a non-browser
+# User-Agent with a challenge, a 403 or a stripped page — so the probe would faithfully time an
+# error page and report it as the site's performance. That is a fabricated measurement, which is
+# worse than no measurement.
+#
+# It also made this project's own two scripts disagree: fingerprint.py already sent a browser
+# string, so on a bot-protected site the two would describe different pages.
+#
+# The probe stays polite in the way that actually matters — it is read-only, it is bounded, and
+# its concurrency is capped. Override with --user-agent when a site needs something specific.
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0 Safari/537.36"
+)
+USER_AGENT = DEFAULT_USER_AGENT
 
 # Ordered from outer edge indicators toward increasingly generic cache indicators.
 CACHE_HEADER_NAMES = (
@@ -1156,6 +1174,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--label", default=DEFAULT_LABEL, help="measurement label")
     parser.add_argument("--repeats", type=positive_integer, default=DEFAULT_REPEATS, help="timing samples per path")
     parser.add_argument("--quick", action="store_true", help="skip payload discovery and HEAD sizing")
+    parser.add_argument(
+        "--user-agent",
+        metavar="STRING",
+        help=(
+            "override the User-Agent sent with every request. Needed when a site's bot rules "
+            "answer the default with a challenge or a 403, which would otherwise be measured as "
+            "the site's own performance."
+        ),
+    )
     parser.add_argument("--quiet", action="store_true", help="suppress the human report; emit JSON only")
     parser.add_argument("--diff", nargs=2, metavar=("A.json", "B.json"), help="compare two metrics documents")
     return parser
@@ -1216,9 +1243,25 @@ def measurement_targets(parser: argparse.ArgumentParser, args: argparse.Namespac
     return []
 
 
+def apply_user_agent(override: Optional[str]) -> None:
+    """Set the module-level User-Agent before any request is issued."""
+
+    global USER_AGENT
+    if override is not None:
+        stripped = override.strip()
+        if not stripped or any(c in stripped for c in ("\n", "\r")):
+            raise ValueError("--user-agent must be a non-empty single-line string")
+        USER_AGENT = stripped
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    try:
+        # Applied before any request is issued, so every probe in the run shares one identity.
+        apply_user_agent(getattr(args, "user_agent", None))
+    except ValueError as exc:
+        parser.error(str(exc))
     if args.diff:
         measurement_values_present = any(
             [args.site, args.urls_file, args.url, args.json, args.quick, args.quiet]
