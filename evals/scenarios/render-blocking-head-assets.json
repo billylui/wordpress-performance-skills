@@ -1,0 +1,19 @@
+{
+  "expected_behavior": [
+    "Identifies both the stylesheet and classic script in the document head as render-blocking resources",
+    "Distinguishes parser or render blocking from transfer-size findings",
+    "contains: blocking.css",
+    "contains: blocking.js"
+  ],
+  "files": [],
+  "fixture": "plain-markup-seeded-defects",
+  "id": "render-blocking-head-assets",
+  "must_not": [
+    "Claims the head script is deferred, asynchronous, or a module",
+    "not_contains: blocking.js is deferred"
+  ],
+  "query": "Audit render-blocking resources in the head of http://localhost:8081. Name the resources, explain why they block, and avoid claims not supported by markup.",
+  "skills": [
+    "wp-perf-audit"
+  ]
+}
