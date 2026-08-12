@@ -70,19 +70,7 @@ This entry does not restate that queue-level procedure.
 | Host class | Permitted | Path |
 |---|---|---|
 | `unknown` | Do not change cron mode | Determine whether the host already supplies a platform schedule. |
-| `wpengine` | Check platform scheduling first | Use the provider-supported scheduler and WP-CLI path. |
-| `kinsta` | Check platform scheduling first | Use the provider-supported scheduler and WP-CLI path. |
-| `siteground` | Check platform scheduling first | Use the provider-supported scheduler and WP-CLI path. |
-| `godaddy` | Check platform scheduling first | Use the provider-supported scheduler and WP-CLI path. |
-| `cloudways` | Check platform scheduling first | Use the provider-supported scheduler and WP-CLI path. |
-| `flywheel` | Check platform scheduling first | Use the provider-supported scheduler and WP-CLI path. |
-| `pressable` | Check platform scheduling first | Use the provider-supported scheduler and WP-CLI path. |
-| `rocket-net` | Check platform scheduling first | Use the provider-supported scheduler and WP-CLI path. |
-| `hostinger` | Check platform scheduling first | Use the provider-supported scheduler and WP-CLI path. |
-| `bluehost` | Check platform scheduling first | Use the provider-supported scheduler and WP-CLI path. |
-| `pantheon` | Check platform scheduling first | Use the provider-supported scheduler and WP-CLI path. |
-| `wpcom` | Check platform scheduling first | Use the provider-supported scheduler and WP-CLI path. |
-| `wpvip` | Check platform scheduling first | Use the provider-supported scheduler and WP-CLI path. |
+| Managed hosting — `wpengine`, `kinsta`, `siteground`, `godaddy`, `cloudways`, `flywheel`, `pressable`, `rocket-net`, `hostinger`, `bluehost`, `pantheon`, `wpcom`, `wpvip` | Check platform scheduling first | Use the provider-supported scheduler and WP-CLI path. |
 | `shared-cpanel` | Check control-panel scheduling first | Coordinate its scheduler with WordPress cron configuration. |
 | `self-managed` | With operator approval | Coordinate the system schedule and WordPress configuration as one change. |
 | `other` | Provider-dependent | Use the host's supported scheduler and command path. |

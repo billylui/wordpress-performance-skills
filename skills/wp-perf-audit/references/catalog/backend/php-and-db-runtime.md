@@ -70,19 +70,7 @@ that white-screens the site is not a performance win.
 | Host class | Permitted | Path |
 |---|---|---|
 | `unknown` | Do not change the runtime | Identify host controls, supported runtimes, and rollback path. |
-| `wpengine` | Provider-controlled | Use the provider runtime process and confirmed rollback path. |
-| `kinsta` | Provider-controlled | Use the provider runtime process and confirmed rollback path. |
-| `siteground` | Provider-controlled | Use the provider runtime process and confirmed rollback path. |
-| `godaddy` | Provider-controlled | Use the provider runtime process and confirmed rollback path. |
-| `cloudways` | Provider-controlled | Use the provider runtime process and confirmed rollback path. |
-| `flywheel` | Provider-controlled | Use the provider runtime process and confirmed rollback path. |
-| `pressable` | Provider-controlled | Use the provider runtime process and confirmed rollback path. |
-| `rocket-net` | Provider-controlled | Use the provider runtime process and confirmed rollback path. |
-| `hostinger` | Provider-controlled | Use the provider runtime process and confirmed rollback path. |
-| `bluehost` | Provider-controlled | Use the provider runtime process and confirmed rollback path. |
-| `pantheon` | Provider-controlled | Use the provider runtime process and confirmed rollback path. |
-| `wpcom` | Provider-controlled | Use the provider runtime process and confirmed rollback path. |
-| `wpvip` | Provider-controlled | Use the provider runtime process and confirmed rollback path. |
+| Managed hosting — `wpengine`, `kinsta`, `siteground`, `godaddy`, `cloudways`, `flywheel`, `pressable`, `rocket-net`, `hostinger`, `bluehost`, `pantheon`, `wpcom`, `wpvip` | Provider-controlled | Use the provider runtime process and confirmed rollback path. |
 | `shared-cpanel` | Control-panel-dependent | Test compatibility and confirm a runtime rollback path. |
 | `self-managed` | With operator approval | Test compatibility on staging and preserve packages/configuration for rollback. |
 | `other` | Provider-dependent | Use the host's runtime selector or support process and approved database path. |
