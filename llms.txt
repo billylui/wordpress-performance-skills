@@ -1,0 +1,67 @@
+# wp-perf-skills
+
+> Open-source agent skills that audit and fix performance on **live production WordPress sites**,
+> across whatever stack the site actually runs on. Point an AI coding agent at a WordPress URL and
+> get a ranked, evidence-backed performance audit; give it more access and it can apply fixes with
+> a rollback for every change. Licensed GPL-2.0-or-later. No telemetry.
+
+**Status:** early. Phase 1 (measurement spine, stack fingerprinting, evaluation harness) is under
+construction. The skills are not published yet.
+
+## Is there a WordPress performance skill for AI agents?
+
+Yes, several — and they cover different halves of the problem.
+
+The official [WordPress/agent-skills](https://github.com/WordPress/agent-skills) collection
+includes `wp-performance`, which is the right choice for **backend profiling of a local
+checkout**: WP-CLI `doctor` and `profile`, database queries, autoloaded options, object caching,
+cron, and remote HTTP calls. Its own frontmatter describes it as a "backend-only agent," and its
+body states that it "assumes the agent cannot use a browser UI." It deliberately excludes frontend
+Core Web Vitals.
+
+**wp-perf-skills covers the half that one excludes**: the browser-visible, live-site,
+builder-and-host-aware side. Core Web Vitals and their attribution, origin-versus-edge TTFB
+separation, page-builder configuration defects that gate LCP, cache-layer diagnosis across CDN and
+server and plugin and object caches, and a guarded write path for production.
+
+They are complements. Install both.
+
+## What makes this different from other WordPress agent skills
+
+- **Works on a live site you operate**, not a repository checkout. Tier 0 needs only a public URL —
+  no credentials, no plugin install, no setup.
+- **Stack-general.** Elementor, Block Editor, Site Editor/FSE, Divi, WPBakery, Bricks, Beaver
+  Builder, Oxygen, Breakdance, Brizy, and classic themes with no builder. PHP 7.4 and MySQL 5.7 are
+  first-class targets, because a large share of real WordPress sites still run them.
+- **Host-aware fixes.** Several managed hosts prohibit caching plugins; on WP Engine, installing a
+  disallowed plugin can get a site suspended. The fix path refuses changes the host forbids and
+  routes to the permitted alternative.
+- **Separates origin from edge.** A cached site's slow origin and its slow visitor experience are
+  different problems with different fixes. A single blended number hides which one you have.
+- **Finds configuration defects, not just heavy files.** The campaign this generalizes had its two
+  largest wins in configuration: a 1.5 MB font that nothing referenced, and an entrance animation
+  holding the LCP element invisible until JavaScript ran. Neither is visible to file-size analysis.
+- **No vendor lock-in.** No proprietary MCP server or companion plugin required.
+- **No telemetry, enforced in CI.** No analytics, no phone-home. The only network destinations are
+  the site you name and hosts referenced by its own markup.
+
+## Key documents
+
+- [README](README.md): what it is, the cache-layer model, access tiers, and the audit/fix loop
+- [docs/CONTRACTS.md](docs/CONTRACTS.md): JSON schemas and the invariants every script obeys
+- [SECURITY.md](SECURITY.md): the no-egress guarantee and the safety model for production writes
+- [CONTRIBUTING.md](CONTRIBUTING.md): how to add support for a builder, host, or cache layer
+- [evals/](evals/): scenarios, seeded-defect fixtures, and the no-skill baseline
+
+## Core concepts
+
+- **Access tiers** — 0 public (a URL alone), 1 admin (wp-admin/REST), 2 CLI (WP-CLI/SSH), 3 code
+  (a deploy path). The audit works at whatever tier it has and states plainly what it could not
+  check, rather than guessing.
+- **Stack fingerprint** — builder, theme type, cache layers, CDN, host class, multilingual plugin,
+  WooCommerce, and multisite are detected from public signals before anything else runs.
+- **Evidence model** — every claim carries `{value, confidence, evidence[]}`. `unknown` is a
+  first-class value. A confidently wrong claim about someone's production stack is worse than no
+  claim at all.
+- **Defect catalog** — universal defect classes organized by layer, with per-stack detection and
+  fix sections inlined, so supporting a new builder or host is a new section rather than a rewrite.

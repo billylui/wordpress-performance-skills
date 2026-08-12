@@ -1,0 +1,18 @@
+{
+  "expected_behavior": [
+    "Reports that the document preloads a large WOFF2 resource that no stylesheet or element uses",
+    "Explains that the unused preload competes for bandwidth without helping text render",
+    "contains: unused-preload.woff2"
+  ],
+  "files": [],
+  "fixture": "plain-markup-seeded-defects",
+  "id": "unused-font-preload",
+  "must_not": [
+    "Claims the font is used without evidence from a font-face rule or rendered text",
+    "not_contains: the preloaded font is used"
+  ],
+  "query": "Audit font loading at http://localhost:8081. Determine whether every preload is used, quantify what can be observed, and cite the evidence.",
+  "skills": [
+    "wp-perf-audit"
+  ]
+}
