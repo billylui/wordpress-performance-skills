@@ -1,0 +1,19 @@
+{
+  "expected_behavior": [
+    "Finds the 2400 by 1600 hero image rendered in a roughly 360 by 240 slot without srcset or sizes",
+    "Reports that the above-the-fold image is incorrectly lazy-loaded",
+    "Recommends a right-sized responsive source and eager or high-priority loading for the LCP candidate",
+    "contains: loading=\"lazy\""
+  ],
+  "files": [],
+  "fixture": "plain-markup-seeded-defects",
+  "id": "unresponsive-above-fold-image",
+  "must_not": [
+    "Claims that srcset or sizes is present",
+    "not_contains: srcset is present"
+  ],
+  "query": "Audit the above-the-fold image at http://localhost:8081 for responsive-source selection, intrinsic versus rendered dimensions, and loading priority.",
+  "skills": [
+    "wp-perf-audit"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "expected_behavior": [
+    "Identifies that the likely LCP region starts at opacity 0 and is revealed only after JavaScript and a deliberate delay",
+    "Explains that the visibility gate can delay LCP independently of transfer size",
+    "contains: opacity:0"
+  ],
+  "files": [],
+  "fixture": "plain-markup-seeded-defects",
+  "id": "lcp-gated-element",
+  "must_not": [
+    "Attributes the entrance animation to Elementor, Divi, or another builder when the fixture uses plain markup",
+    "not_contains: Elementor plugin is installed"
+  ],
+  "query": "Audit the likely LCP behavior at http://localhost:8081. Identify any visibility gating, explain its performance impact, and cite public-page evidence only.",
+  "skills": [
+    "wp-perf-audit"
+  ]
+}

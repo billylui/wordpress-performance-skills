@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+services:
+  db:
+    image: "${DB_IMAGE:-mariadb:10.11}"
+    environment:
+      MYSQL_DATABASE: "${DB_NAME:-wordpress}"
+      MYSQL_PASSWORD: "${DB_PASSWORD:-wordpress}"
+      MYSQL_ROOT_PASSWORD: "${DB_ROOT_PASSWORD:-fixture-root}"
+      MYSQL_USER: "${DB_USER:-wordpress}"
+    restart: unless-stopped
+    volumes:
+      - db-data:/var/lib/mysql
+
+  wordpress:
+    image: "${WORDPRESS_IMAGE:-wordpress:6.7.1-php7.4-apache}"
+    depends_on:
+      - db
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_NAME: "${DB_NAME:-wordpress}"
+      WORDPRESS_DB_PASSWORD: "${DB_PASSWORD:-wordpress}"
+      WORDPRESS_DB_USER: "${DB_USER:-wordpress}"
+    ports:
+      - "${WP_PORT:-8081}:80"
+    restart: unless-stopped
+    volumes:
+      - wordpress-data:/var/www/html
+
+  seed:
+    image: "${WP_CLI_IMAGE:-wordpress:cli-php7.4}"
+    depends_on:
+      - db
+      - wordpress
+    entrypoint:
+      - /bin/sh
+    command:
+      - /seed/seed.sh
+    environment:
+      DB_NAME: "${DB_NAME:-wordpress}"
+      DB_PASSWORD: "${DB_PASSWORD:-wordpress}"
+      DB_USER: "${DB_USER:-wordpress}"
+      FIXTURE_ADMIN_PASSWORD: "${FIXTURE_ADMIN_PASSWORD:-fixture-only}"
+      WP_PORT: "${WP_PORT:-8081}"
+    restart: "no"
+    user: "0:0"
+    volumes:
+      - wordpress-data:/var/www/html
+      - ./seed:/seed:ro
+
+volumes:
+  db-data:
+  wordpress-data:

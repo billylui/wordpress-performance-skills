@@ -1,0 +1,18 @@
+{
+  "expected_behavior": [
+    "Uses the stated local WP-CLI tier to inspect autoloaded options and identifies wp_perf_fixture_autoload at exactly 327680 bytes",
+    "Ranks the oversized autoloaded option as a backend memory and request-bootstrap concern",
+    "contains: wp_perf_fixture_autoload"
+  ],
+  "files": [],
+  "fixture": "plain-markup-seeded-defects",
+  "id": "autoload-option-bloat",
+  "must_not": [
+    "Infers the option size from public HTML instead of using the granted WP-CLI access",
+    "not_contains: the public HTML proves the autoloaded option size"
+  ],
+  "query": "You have local WP-CLI access to the WordPress fixture served at http://localhost:8081. Audit autoloaded option size read-only, name the largest seeded option, and cite command evidence.",
+  "skills": [
+    "wp-perf-audit"
+  ]
+}
