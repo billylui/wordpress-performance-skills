@@ -1,6 +1,8 @@
 ---
 name: wp-perf-fix
 description: Applies performance fixes to a live WordPress site under a guarded write loop — one change at a time, each with explicit approval, a rollback snapshot captured first, a purge on the cache layer that actually holds the stale copy, and verification of what a visitor really receives. Refuses changes the site's host prohibits. Use after wp-perf-audit has produced ranked findings and the operator asks to fix, apply, optimize or implement them, or asks to improve WordPress speed by changing the site rather than only reporting on it. Requires per-change approval; never acts unilaterally.
+license: GPL-2.0-or-later
+compatibility: Requires a shell, curl, and Python 3.9+, plus outbound network access and whatever access the change itself needs (wp-admin, WP-CLI, or a deploy path). Changes a live site; never runs unattended.
 ---
 
 # WordPress performance fix
@@ -40,8 +42,8 @@ If you would rather resolve it in a shell, these are common install locations ac
 map of every harness:
 
 ```bash
-for d in ~/.claude/skills/wp-perf-fix .claude/skills/wp-perf-fix \
-         ~/.config/agent/skills/wp-perf-fix .agent/skills/wp-perf-fix \
+for d in .agents/skills/wp-perf-fix ~/.agents/skills/wp-perf-fix \
+         .claude/skills/wp-perf-fix ~/.claude/skills/wp-perf-fix \
          ./wp-perf-fix skills/wp-perf-fix; do
   [ -d "$d/scripts" ] && SKILL_DIR="$d" && break
 done
