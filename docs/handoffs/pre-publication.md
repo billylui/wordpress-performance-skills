@@ -86,7 +86,24 @@ strong the format-level evidence is.
 **Fix:** install on one other agent and run a tier-0 audit. Roughly ten minutes, and it converts
 the strongest remaining assumption into evidence.
 
-### 6. Distribution and outreach — not started, deliberately
+### 6. No escaped-bug taxonomy, because there is no test contract to hold it
+
+**Problem:** a real audit run surfaced several defects that unit tests had not — the change-plan
+validator failing open three ways, the host-class deadlock, a bot User-Agent liable to measure a
+challenge page, a payload walk that could not finish, script paths that assumed the repo root.
+Every one has a **regression lock** (an adversarial case or a CI check), but there is no
+`docs/TESTING.md` to record *which class of check would have caught it first*, so the same shapes
+can recur without anything noticing.
+
+**Why it matters:** the locks stop each specific bug returning. The taxonomy is what turns a
+one-off fix into coverage — it names the missing check, not the missing line.
+
+**Fix:** scaffold `docs/TESTING.md` from the release-gate template and backfill a row per defect:
+ID, date, bug, miss-class, what would have caught it, lock file. Deliberately **not** improvised
+during this wrap — a partial gate that looks complete is worse than none, and release-gate owns
+that contract's shape.
+
+### 7. Distribution and outreach — not started, deliberately
 
 Each of these publishes under the maintainer's identity and should not be automated:
 
