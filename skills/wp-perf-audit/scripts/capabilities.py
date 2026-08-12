@@ -2,7 +2,7 @@
 """Report which WordPress performance measurements are currently available.
 
 Usage:
-  python3 capabilities.py [--target URL] [--json PATH] [--quiet]
+  python3 capabilities.py [--target URL] [--json PATH] [--quiet] [--local-root PATH]
 
 The script performs only local presence checks and unauthenticated public GETs.
 It never reads credential values or attempts to log in to a target site.
@@ -678,51 +678,18 @@ def probe_local_wordpress_urls(
     return dict(sorted(configured_urls.items()))
 
 
-def url_path_segments(value: str) -> Optional[Tuple[str, ...]]:
-    """Return a URL's path as comparable segments, or None if it cannot be parsed."""
+def same_path(declared: Path, discovered: Path) -> bool:
+    """Whether the operator's declared root is the checkout that was discovered.
 
-    try:
-        parsed = urllib.parse.urlsplit(value.strip())
-    except ValueError:
-        return None
-    return tuple(segment for segment in parsed.path.split("/") if segment)
-
-
-def local_checkout_matches_target(
-    target: str, configured_urls: Dict[str, str]
-) -> Tuple[bool, List[str]]:
-    """Whether a local checkout's own configured URLs identify the target being audited.
-
-    **An origin is not an installation identity.** Two separate WordPress installations commonly
-    share one origin at different paths — `https://example.com/site-a/` and
-    `https://example.com/site-b/`. Matching on scheme, host and port alone would let a checkout
-    of site A raise the confirmed access tier for an audit of site B, so the audit would believe
-    it had WP-CLI or deploy access to a site it cannot touch, and a later fix could be aimed at
-    the wrong checkout entirely.
-
-    The comparison is containment, not equality: the checkout's configured home is an
-    installation root, while `target` may be any page inside it.
-
-    Fails closed — an unparseable URL on either side is not a match.
+    A filesystem comparison, resolved to defeat symlinks and relative paths. This replaces the
+    URL-based inference that three review rounds failed to make sound: identity is asserted by
+    the operator and merely confirmed here, rather than guessed from strings.
     """
 
-    target_origin = normalized_origin(target)
-    target_path = url_path_segments(target)
-    if target_origin is None or target_path is None or not configured_urls:
-        return False, []
-
-    matched_constants: List[str] = []
-    for constant_name, configured_url in sorted(configured_urls.items()):
-        configured_origin = normalized_origin(configured_url)
-        configured_path = url_path_segments(configured_url)
-        if configured_origin is None or configured_path is None:
-            return False, []
-        if configured_origin != target_origin:
-            return False, []
-        if target_path[: len(configured_path)] != configured_path:
-            return False, []
-        matched_constants.append(constant_name)
-    return bool(matched_constants), matched_constants
+    try:
+        return declared.resolve() == discovered.resolve()
+    except OSError:
+        return False
 
 
 def exercise_wp_cli(wp_tool: Dict[str, Union[bool, Optional[str]]], root: Optional[Path]) -> bool:
@@ -903,7 +870,7 @@ def measurement_boundaries(
     return can_measure, cannot_measure, notes
 
 
-def build_profile(target: Optional[str]) -> Dict[str, object]:
+def build_profile(target: Optional[str], local_root_declared: Optional[Path] = None) -> Dict[str, object]:
     """Build one complete capability-profile document."""
 
     tools, notes = probe_tools()
@@ -937,26 +904,34 @@ def build_profile(target: Optional[str]) -> Dict[str, object]:
             )
         )
     elif wordpress_root is not None and target is not None:
-        configured_urls = probe_local_wordpress_urls(tools["wp_cli"], wordpress_root)
-        local_access_is_bound, matched_constants = local_checkout_matches_target(
-            target, configured_urls
-        )
-        if local_access_is_bound:
-            constant_names = ", ".join(matched_constants)
+        # Local evidence raises the tier for a named target ONLY when the operator has said so.
+        #
+        # Three review rounds tried to INFER this from URLs — comparing origins, then requiring
+        # path containment — and each attempt was defeated: a parent installation at `/` appears
+        # to contain a separate one at `/shop/`, `/site-a/../site-b/` resolves server-side to a
+        # sibling, and WP_HOME and WP_SITEURL are legitimately different roots. URL strings
+        # cannot prove that a checkout on this disk is the site at that address.
+        #
+        # So it is not inferred. Getting this wrong means reporting WP-CLI or deploy access to a
+        # site the operator cannot touch, and a later fix aimed at the wrong checkout — a cost
+        # far above the convenience of auto-detection. Unbound is the default and the safe answer.
+        if local_root_declared is not None and same_path(local_root_declared, wordpress_root):
+            local_access_is_bound = True
             local_binding_evidence = (
-                "probe: named target origin matches local WordPress {} configuration".format(
-                    constant_names
+                "probe: operator bound local checkout {} to the named target via --local-root".format(
+                    wordpress_root.as_posix()
                 )
             )
             notes.append(
-                "The local WordPress checkout at {} is bound to the named target by matching {} origin.".format(
-                    wordpress_root.as_posix(), constant_names
-                )
+                "The local WordPress checkout at {} is bound to the named target because the "
+                "operator declared it with --local-root.".format(wordpress_root.as_posix())
             )
         else:
             notes.append(
-                "Unbound local access: a WordPress checkout exists at {}, but its configured home/siteurl origin could not be confirmed to match the named target; it did not raise the target tier.".format(
-                    wordpress_root.as_posix()
+                "Unbound local access: a WordPress checkout exists at {}, but nothing proves it "
+                "is the site at the named target, so it did not raise the tier. Pass "
+                "--local-root {} to declare that it is.".format(
+                    wordpress_root.as_posix(), wordpress_root.as_posix()
                 )
             )
 
@@ -1070,6 +1045,15 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--target", help="public WordPress URL to probe without authentication")
     parser.add_argument("--json", metavar="PATH", help="write JSON to PATH; - means stdout")
     parser.add_argument("--quiet", action="store_true", help="suppress the human report; JSON only")
+    parser.add_argument(
+        "--local-root",
+        metavar="PATH",
+        help=(
+            "declare that the WordPress checkout at PATH is the site named by --target. "
+            "Without it, a local checkout never raises the access tier: nothing about a "
+            "directory on this disk proves it is the site at that address."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -1079,7 +1063,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         args = parse_args(argv)
         target = normalize_target(args.target) if args.target is not None else None
-        profile = build_profile(target)
+        declared_root: Optional[Path] = None
+        if args.local_root is not None:
+            declared_root = Path(args.local_root).expanduser()
+            if not declared_root.is_dir():
+                print(
+                    "--local-root must name an existing directory: {}".format(args.local_root),
+                    file=sys.stderr,
+                )
+                return EXIT_USAGE
+        profile = build_profile(target, declared_root)
         return write_outputs(profile, args.json, args.quiet)
     except ValueError as exc:
         print("capabilities: {}".format(exc), file=sys.stderr)

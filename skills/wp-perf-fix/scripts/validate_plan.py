@@ -994,49 +994,67 @@ def normalized_origin(value: Any) -> Optional[str]:
     return "{}://{}:{}".format(scheme, display_host, effective_port)
 
 
-def path_segments(value: Any) -> Optional[Tuple[str, ...]]:
-    """Return the path of a URL as comparable segments, or None if it is unusable."""
+# Path segments that make a URL's server-side resolution ambiguous. A proxy or web server may
+# collapse these before routing, so any normalization chosen here could disagree with whatever
+# actually served the request — and the disagreement is exactly what an attacker would aim for.
+AMBIGUOUS_PATH_SEGMENTS = frozenset({".", ".."})
+
+# Percent-encodings that can decode into a path separator or a dot segment on some servers.
+AMBIGUOUS_PATH_ENCODINGS = ("%2f", "%5c", "%2e")
+
+
+def canonical_site_identity(value: Any) -> Optional[str]:
+    """Return a canonical identity string for a WordPress site URL, or None if unusable.
+
+    **URL strings cannot be made to prove installation identity by comparison alone.** Three
+    review rounds established that the hard way: comparing origins treats
+    `https://example.com/site-a/` and `/site-b/` as one site; adding path containment then
+    treats a parent installation at `/` as containing a separate one mounted at `/shop/`; and
+    dot segments such as `/site-a/../site-b/` resolve server-side to a sibling while still
+    looking contained.
+
+    So this does not infer containment at all. It canonicalizes, and the caller compares for
+    EQUALITY. Both sides of that comparison are produced by this project's own tools, which can
+    carry the identical site string by construction, so nothing is lost by refusing to guess.
+
+    Ambiguity is refused rather than normalized: a path with a dot segment or an encoded
+    separator returns None, because this code cannot know how the origin resolved it.
+    """
 
     if not is_non_empty_string(value):
         return None
     assert isinstance(value, str)
+    origin = normalized_origin(value)
+    if origin is None:
+        return None
     try:
         parsed = urlsplit(value.strip())
     except ValueError:
         return None
-    return tuple(segment for segment in parsed.path.split("/") if segment)
+
+    raw_path = parsed.path
+    lowered = raw_path.casefold()
+    if any(encoding in lowered for encoding in AMBIGUOUS_PATH_ENCODINGS):
+        return None
+    segments = [segment for segment in raw_path.split("/") if segment]
+    if any(segment in AMBIGUOUS_PATH_SEGMENTS for segment in segments):
+        return None
+    return "{}/{}".format(origin, "/".join(segments))
 
 
 def identifies_same_installation(site_url: Any, probed_url: Any) -> Optional[bool]:
-    """Whether `probed_url` lies inside the WordPress installation rooted at `site_url`.
+    """Whether two URLs name the same WordPress installation.
 
-    **Origin alone is not an installation identity.** Two entirely separate WordPress
-    installations routinely share one origin at different paths — `https://example.com/site-a/`
-    and `https://example.com/site-b/`. Comparing only scheme, host and port treats them as the
-    same site, which would let a fingerprint taken from one authorize host constraints and cache
-    assertions for the other. Those properties genuinely differ between such installations, so
-    the mistake is not academic: it can send a production change to the wrong place.
-
-    Containment rather than equality, because the two arguments are different kinds of URL. The
-    site root is compared against a URL that may legitimately be any page within it — a
-    fingerprint of `https://example.com/blog/some-post/` belongs to the site rooted at
-    `https://example.com/blog/`. Requiring equality there would refuse correct pairings.
-
-    Returns None when either URL has no usable origin, so the caller can report *why* rather
-    than silently treating unusable input as a mismatch.
+    Exact canonical equality — see `canonical_site_identity` for why containment was abandoned.
+    Returns None when either URL is unusable or ambiguous, so the caller can report *why* rather
+    than reporting a mismatch it cannot justify.
     """
 
-    site_origin = normalized_origin(site_url)
-    probed_origin = normalized_origin(probed_url)
-    if site_origin is None or probed_origin is None:
+    site_identity = canonical_site_identity(site_url)
+    probed_identity = canonical_site_identity(probed_url)
+    if site_identity is None or probed_identity is None:
         return None
-    if site_origin != probed_origin:
-        return False
-    site_path = path_segments(site_url)
-    probed_path = path_segments(probed_url)
-    if site_path is None or probed_path is None:
-        return None
-    return probed_path[: len(site_path)] == site_path
+    return site_identity == probed_identity
 
 
 def cross_check_stack(
