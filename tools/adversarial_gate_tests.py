@@ -125,7 +125,8 @@ def start_fixture() -> tuple[str, http.server.HTTPServer]:
 
 
 # ------------------------------------------------------------------------------- plan fixtures --
-def write_plan(tmp: pathlib.Path, *, site="https://example.com", tier=3, **over) -> pathlib.Path:
+def write_plan(tmp: pathlib.Path, *, site="https://example.com", tier=3,
+               host_class="self-managed", **over) -> pathlib.Path:
     snap = tmp / "snap.bak"
     snap.write_text("original\n")
     change = {
@@ -151,7 +152,7 @@ def write_plan(tmp: pathlib.Path, *, site="https://example.com", tier=3, **over)
         "tool_version": "0.1.0",
         "generated_at": "2026-08-12T00:00:00Z",
         "site": site,
-        "host_class": "self-managed",
+        "host_class": host_class,
         "tier": tier,
         "baseline_metrics": "b.json",
         "cache_layers_present": ["page-plugin"],
@@ -163,7 +164,8 @@ def write_plan(tmp: pathlib.Path, *, site="https://example.com", tier=3, **over)
     return path
 
 
-def write_stack(tmp: pathlib.Path, target: str) -> pathlib.Path:
+def write_stack(tmp: pathlib.Path, target: str, host="self-managed",
+                host_confidence="high") -> pathlib.Path:
     """A CONTRACT-VALID fingerprint. Every field but the target matches the plan, so a refusal
     can only come from the target binding under test."""
     stack = {
@@ -175,7 +177,11 @@ def write_stack(tmp: pathlib.Path, target: str) -> pathlib.Path:
         "pages_probed": [target],
         "notes": [],
         "profile": {
-            "host_class": {"value": "self-managed", "confidence": "high", "evidence": ["header: x"]}
+            "host_class": {
+                "value": host,
+                "confidence": host_confidence,
+                "evidence": [] if host == "unknown" else ["header: x"],
+            }
         },
         "cache_layers": [
             {
@@ -187,7 +193,7 @@ def write_stack(tmp: pathlib.Path, target: str) -> pathlib.Path:
             for layer in CACHE_LAYERS
         ],
     }
-    path = tmp / f"stack-{abs(hash(target))}.json"
+    path = tmp / f"stack-{abs(hash((target, host, host_confidence)))}.json"
     path.write_text(json.dumps(stack))
     return path
 
@@ -271,6 +277,28 @@ def main() -> int:
         expect_exit("stack profile from a SIBLING install on the same origin",
                     [VALIDATE, write_plan(tmp, site="https://example.com/site-a"),
                      "--stack", write_stack(tmp, "https://example.com/site-b/"), "--quiet"], 1)
+
+        # The plan's host_class is the operator's declaration; the fingerprint is a
+        # contradiction check. Gating on the fingerprint's CONFIDENCE instead deadlocked real
+        # sites — GoDaddy is detected at medium by design, so no GoDaddy site could be fixed —
+        # while leaving genuine contradictions unexamined, because the helper bailed out before
+        # the comparison ran.
+        expect_exit("CONTROL: a medium-confidence host that AGREES is accepted",
+                    [VALIDATE, write_plan(tmp, host_class="godaddy"), "--stack",
+                     write_stack(tmp, "https://example.com/", host="godaddy",
+                                 host_confidence="medium"), "--quiet"], 0)
+        expect_exit("a host that CONTRADICTS the plan is refused, even at medium confidence",
+                    [VALIDATE, write_plan(tmp, host_class="godaddy"), "--stack",
+                     write_stack(tmp, "https://example.com/", host="wpengine",
+                                 host_confidence="medium"), "--quiet"], 1)
+        expect_exit("a high-confidence contradiction is refused",
+                    [VALIDATE, write_plan(tmp, host_class="godaddy"), "--stack",
+                     write_stack(tmp, "https://example.com/", host="kinsta",
+                                 host_confidence="high"), "--quiet"], 1)
+        expect_exit("an unknown host leaves the operator's declaration standing",
+                    [VALIDATE, write_plan(tmp, host_class="godaddy"), "--stack",
+                     write_stack(tmp, "https://example.com/", host="unknown",
+                                 host_confidence="none"), "--quiet"], 0)
 
     print("\n=== capabilities.py — local evidence must belong to the audited installation ===")
     # The loopback fixture answers 200 on every path, so /site-a/ and /site-b/ are both reachable
