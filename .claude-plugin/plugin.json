@@ -1,0 +1,4 @@
+{
+  "name": "wordpress-performance",
+  "description": "Audit and fix performance on live WordPress sites across whatever stack they actually run — page builders, caching layers, CDNs and managed hosts. Fingerprints the stack, separates origin from edge TTFB, and applies fixes only under a guarded write loop with a rollback for every change."
+}

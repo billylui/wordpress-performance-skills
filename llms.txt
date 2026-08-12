@@ -5,8 +5,19 @@
 > get a ranked, evidence-backed performance audit; give it more access and it can apply fixes with
 > a rollback for every change. Licensed GPL-2.0-or-later. No telemetry.
 
-**Status:** early. Phase 1 (measurement spine, stack fingerprinting, evaluation harness) is under
-construction. The skills are not published yet.
+**Status:** v0.1, usable but young. Both skills, a 20-entry defect catalog, the measurement
+scripts and an evaluation harness are in place.
+
+**Install:** `/plugin marketplace add billylui/wordpress-performance-skills` then
+`/plugin install wordpress-performance@wordpress-performance-skills` in Claude Code, or
+`npx skills add billylui/wordpress-performance-skills` for any agent supporting the Agent Skills
+standard. Install `wp-perf-audit` alone for read-only measurement and reporting.
+
+**The two skills:** `wp-perf-audit` measures and explains and changes nothing; `wp-perf-fix`
+applies changes under a guarded write loop — one change at a time, each with explicit approval, a
+rollback snapshot captured and verified first, a purge on the layer that actually holds the stale
+copy, and verification of what a visitor really receives. A fail-closed validator refuses any
+plan that violates those conditions.
 
 ## Is there a WordPress performance skill for AI agents?
 

@@ -6,9 +6,40 @@
 Point an AI coding agent at a WordPress URL and get a ranked, evidence-backed performance audit.
 Give it more access and it can fix what it found, safely, with a rollback for every change.
 
-> **Status: early.** Phase 1 (measurement spine + stack fingerprinting + evaluation harness) is
-> under construction. The skills themselves are not published yet. Watch the repo rather than
-> depending on it.
+> **Status: v0.1, usable but young.** Both skills, the 20-entry defect catalog, the measurement
+> scripts and the evaluation harness are in place. It has been exercised against live sites but
+> not yet across the full stack matrix, so expect rough edges on stacks nobody has pointed it at.
+> [Issues](https://github.com/billylui/wordpress-performance-skills/issues) about a stack it gets
+> wrong are the most useful thing you can send.
+
+## Install
+
+**Claude Code**
+
+```bash
+/plugin marketplace add billylui/wordpress-performance-skills
+/plugin install wordpress-performance@wordpress-performance-skills
+```
+
+**Any agent supporting the Agent Skills standard** (Codex, Cursor, Copilot, Gemini CLI, and
+others):
+
+```bash
+npx skills add billylui/wordpress-performance-skills
+```
+
+**Manually** — copy `skills/wp-perf-audit/` and `skills/wp-perf-fix/` into `.claude/skills/` in
+your project, or `~/.claude/skills/` for every project.
+
+Install `wp-perf-audit` alone if you only want measurement and reporting. It is read-only and
+touches nothing.
+
+Then point it at a site:
+
+> Audit the performance of https://example.com
+
+No credentials, no plugin, no setup. That is tier 0, and it is a complete audit of the frontend
+and cache layers.
 
 ---
 
@@ -31,6 +62,23 @@ campaign's own conclusion:
 A backend-only, browser-blind, repo-oriented tool cannot find either one. That is the gap.
 
 **This is a complement to the official skill, not a competitor.** Install both.
+
+The full account of that engagement — including the target it missed and why — is in
+[docs/case-study-anonymized.md](docs/case-study-anonymized.md).
+
+### How this compares to other WordPress agent skills
+
+Honest positioning, because picking the wrong tool wastes your time more than it wastes ours.
+
+| | Covers | Best for | Not for |
+|---|---|---|---|
+| [`WordPress/agent-skills`](https://github.com/WordPress/agent-skills) `wp-performance` | WP-CLI `doctor`/`profile`, DB queries, autoload, object cache, cron | **Backend profiling of a local checkout.** The official, most widely used option. | Frontend Core Web Vitals — excluded by design; its frontmatter says "backend-only agent" |
+| **wordpress-performance-skills** (this) | Core Web Vitals, origin-vs-edge TTFB, page-builder and theme config, cache layers, host constraints, guarded fixes | **A live site you operate**, at any access level including a bare URL | Deep query profiling — it routes you upstream instead |
+| [`addyosmani/agent-skills`](https://github.com/addyosmani/agent-skills) | General web performance and browser debugging | Any web stack, excellent general practice | Anything WordPress-specific — no builder, plugin, or host awareness |
+
+If you are profiling a plugin you are developing, use the official skill. If your live site is
+slow and you want to know why, start here. They compose: this one hands off to that one by name
+whenever a finding bottoms out in the backend.
 
 ---
 
@@ -153,19 +201,49 @@ skills/
   wp-perf-audit/          read-only, safe against production, the entry point
     SKILL.md
     references/
-      catalog/            defect classes: frontend · caching · backend · platform · plugins
+      catalog/            20 defect classes: frontend · caching · backend · platform · plugins
+      access-tiers.md  measurement.md  stack-profiles.md  chrome-devtools-mcp.md
     scripts/
       fingerprint.py      what stack is this site running?
       perf-probe.py       origin-vs-edge TTFB, payload walk, before/after diffing
       capabilities.py     what can this audit honestly establish?
-  wp-perf-fix/            the guarded write loop — snapshot, apply, purge, verify
+  wp-perf-fix/            the guarded write loop
+    SKILL.md              plan → validate → approve → snapshot → apply → purge → verify
+    references/
+      host-constraints.md    the hard gate: what each host forbids
+      risk-lanes.md  rollback.md  cache-purge-matrix.md  verify-live.md
+    scripts/
+      validate_plan.py    fail-closed gate; a non-zero exit stops the run
 docs/
   CONTRACTS.md            JSON schemas and shared invariants every script obeys
+  case-study-anonymized.md
 evals/                    scenarios, seeded-defect fixtures, and the no-skill baseline
+tools/                    CI checks: no-egress, link integrity, reference depth
 ```
 
 Two skills, not one: the read/write split is a real safety boundary, and you can install only the
 audit half.
+
+## The fix loop
+
+`wp-perf-fix` never acts unilaterally. Every change is one change, with approval, a snapshot
+captured and verified first, a purge on the layer that actually holds the stale copy, and
+verification of what a visitor really receives.
+
+Before anything is touched, the intended change is written to disk as a plan and checked:
+
+```bash
+python3 skills/wp-perf-fix/scripts/validate_plan.py plan.json --stack stack.json
+```
+
+This is a **fail-closed gate, not a linter.** It refuses a plan whose change the host prohibits,
+whose snapshot artifact does not exist, whose approval is not recorded, whose purge layers do not
+match the layers actually detected, or whose access tier cannot perform the change. A non-zero
+exit stops the run. Prove it to yourself:
+
+```bash
+python3 skills/wp-perf-fix/scripts/validate_plan.py --selftest
+```
 
 ---
 
