@@ -38,7 +38,8 @@ rather than a new file.
    references must stay one level deep from `SKILL.md`, because an agent may only partially read
    a file reached through another file, and act on incomplete information.
 4. **Add a host constraint** if the stack forbids something. This is not documentation — it is a
-   gate the fix skill enforces. Getting it wrong can get somebody's site suspended.
+   gate the fix skill enforces. Getting it wrong can break somebody's production site, or have the platform strip the plugin
+   out from under them.
 5. **Add an eval scenario** under `evals/scenarios/` proving the detection works and that nothing
    is invented.
 

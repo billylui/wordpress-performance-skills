@@ -274,6 +274,65 @@ Rules:
 - Detection is **presence-only and local** — no credential is used, no login attempted, no
   request authenticated. Establishing that `/wp-json/` returns an index is a public GET.
 
+## Schema: change plan
+
+Produced by `wp-perf-fix` **before it touches anything**, validated by
+`skills/wp-perf-fix/scripts/validate_plan.py`, and only then executed. This is the
+plan-validate-execute pattern: the agent writes down what it intends to do, a script checks the
+intent against the host's constraints and this project's safety rules, and a failed validation
+stops the run. A plan is cheap to reject; a half-applied change to production is not.
+
+```json
+{
+  "schema_version": "1.0",
+  "tool": "change-plan",
+  "tool_version": "0.1.0",
+  "generated_at": "2026-08-12T04:15:00Z",
+  "site": "https://example.com",
+  "host_class": "wpengine",
+  "tier": 2,
+  "baseline_metrics": "baselines/before.json",
+  "cache_layers_present": ["edge", "page-plugin"],
+  "changes": [
+    {
+      "id": "c1",
+      "summary": "Remove the preload for a font family no rule references",
+      "catalog_entry": "frontend/fonts-preloaded-unused.md",
+      "risk_lane": "direct",
+      "target": { "kind": "theme-file", "identifier": "functions.php" },
+      "snapshot": { "required": true, "artifact": "snapshots/c1-functions.php.bak" },
+      "approval": { "required": true, "granted": false },
+      "purge_layers": ["page-plugin", "edge"],
+      "expected_effect": { "metric": "total_kb", "url": "https://example.com/", "direction": "decrease" },
+      "rollback": "Restore snapshots/c1-functions.php.bak and purge page-plugin then edge."
+    }
+  ]
+}
+```
+
+Rules — each exists because violating it has a specific real-world cost:
+
+- **`risk_lane`** is `direct` | `staging-first` | `prohibited`. A change is `prohibited` when the
+  host forbids it; the validator rejects the whole plan rather than skipping the change, because
+  a plan containing a prohibited action was built on a wrong understanding of the environment.
+- **`snapshot.artifact` must exist on disk before execution.** `required: true` with a missing
+  artifact fails validation. A change you cannot reverse is not a change you may make.
+- **`approval.granted` must be `true` at execution time**, per change. Approval for one change is
+  never approval for the next, and is never inferred from a general go-ahead.
+- **`purge_layers` must be non-empty** whenever any cache layer is present, and every entry must
+  be a layer the fingerprint actually found. A change purged on the wrong layer is a change that
+  never shipped.
+- **`expected_effect` is mandatory.** Stating the target metric *before* the change is what makes
+  the after-measurement meaningful; without it, any result can be rationalized as success.
+- **`catalog_entry`** is a path relative to `skills/wp-perf-audit/references/catalog/` and must
+  resolve. It ties the change to the documented Fix, Verify and Rollback procedure.
+- **`tier` must be sufficient for every `target.kind`** in the plan — a `theme-file` change needs
+  tier 3, a `wp-option` change needs tier 2, and so on. Planning a change the access level cannot
+  perform wastes an approval round-trip at best.
+
+`target.kind` vocabulary: `theme-file` · `plugin-file` · `mu-plugin` · `wp-option` ·
+`plugin-setting` · `builder-content` · `media` · `server-config` · `dns-or-cdn-setting`
+
 ## Vocabularies
 
 Closed sets. `"unknown"` is always additionally valid. Extending a vocabulary means editing this
