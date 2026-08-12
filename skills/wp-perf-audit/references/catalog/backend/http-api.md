@@ -69,19 +69,7 @@ This entry provides only the public-to-backend routing decision.
 | Host class | Permitted | Path |
 |---|---|---|
 | `unknown` | Read-only routing only | Identify outbound-network and diagnostic restrictions first. |
-| `wpengine` | Provider-dependent | Use approved profiling, APM, and outbound-network paths. |
-| `kinsta` | Provider-dependent | Use approved profiling, APM, and outbound-network paths. |
-| `siteground` | Provider-dependent | Use approved profiling, APM, and outbound-network paths. |
-| `godaddy` | Provider-dependent | Use approved profiling, APM, and outbound-network paths. |
-| `cloudways` | Provider-dependent | Use approved profiling, APM, and outbound-network paths. |
-| `flywheel` | Provider-dependent | Use approved profiling, APM, and outbound-network paths. |
-| `pressable` | Provider-dependent | Use approved profiling, APM, and outbound-network paths. |
-| `rocket-net` | Provider-dependent | Use approved profiling, APM, and outbound-network paths. |
-| `hostinger` | Provider-dependent | Use approved profiling, APM, and outbound-network paths. |
-| `bluehost` | Provider-dependent | Use approved profiling, APM, and outbound-network paths. |
-| `pantheon` | Provider-dependent | Use approved profiling, APM, and outbound-network paths. |
-| `wpcom` | Provider-dependent | Use approved profiling, APM, and outbound-network paths. |
-| `wpvip` | Provider-dependent | Use approved profiling, APM, and outbound-network paths. |
+| Managed hosting — `wpengine`, `kinsta`, `siteground`, `godaddy`, `cloudways`, `flywheel`, `pressable`, `rocket-net`, `hostinger`, `bluehost`, `pantheon`, `wpcom`, `wpvip` | Provider-dependent | Use approved profiling, APM, and outbound-network paths. |
 | `shared-cpanel` | Provider-dependent | Confirm outbound-network and diagnostic controls first. |
 | `self-managed` | With operator approval | Follow upstream profiling and retain the prior code/configuration. |
 | `other` | Provider-dependent | Confirm outbound request, APM, and plugin policy with the host. |

@@ -70,19 +70,7 @@ This entry identifies the route only; N+1 repair, query redesign, and index deci
 | Host class | Permitted | Path |
 |---|---|---|
 | `unknown` | Read-only routing only | Identify the host and its query-profiling policy first. |
-| `wpengine` | Provider-dependent | Use provider-approved query profiling and database changes. |
-| `kinsta` | Provider-dependent | Use provider-approved query profiling and database changes. |
-| `siteground` | Provider-dependent | Use provider-approved query profiling and database changes. |
-| `godaddy` | Provider-dependent | Use provider-approved query profiling and database changes. |
-| `cloudways` | Provider-dependent | Use provider-approved query profiling and database changes. |
-| `flywheel` | Provider-dependent | Use provider-approved query profiling and database changes. |
-| `pressable` | Provider-dependent | Use provider-approved query profiling and database changes. |
-| `rocket-net` | Provider-dependent | Use provider-approved query profiling and database changes. |
-| `hostinger` | Provider-dependent | Use provider-approved query profiling and database changes. |
-| `bluehost` | Provider-dependent | Use provider-approved query profiling and database changes. |
-| `pantheon` | Provider-dependent | Use provider-approved query profiling and database changes. |
-| `wpcom` | Provider-dependent | Use provider-approved query profiling and database changes. |
-| `wpvip` | Provider-dependent | Use provider-approved query profiling and database changes. |
+| Managed hosting — `wpengine`, `kinsta`, `siteground`, `godaddy`, `cloudways`, `flywheel`, `pressable`, `rocket-net`, `hostinger`, `bluehost`, `pantheon`, `wpcom`, `wpvip` | Provider-dependent | Use provider-approved query profiling and database changes. |
 | `shared-cpanel` | Provider-dependent | Confirm backup and database-change controls before writes. |
 | `self-managed` | With operator approval | Snapshot the database and schema before any query or index change. |
 | `other` | Provider-dependent | Use provider-approved diagnostics and database-change workflow. |

@@ -70,19 +70,7 @@ This entry stops at routing; it does not duplicate the upstream skill's option-l
 | Host class | Permitted | Path |
 |---|---|---|
 | `unknown` | Read-only routing only | Identify the host and approved database-change path first. |
-| `wpengine` | Provider-dependent | Use the provider-approved WP-CLI and database-change path. |
-| `kinsta` | Provider-dependent | Use the provider-approved WP-CLI and database-change path. |
-| `siteground` | Provider-dependent | Use the provider-approved WP-CLI and database-change path. |
-| `godaddy` | Provider-dependent | Use the provider-approved WP-CLI and database-change path. |
-| `cloudways` | Provider-dependent | Use the provider-approved WP-CLI and database-change path. |
-| `flywheel` | Provider-dependent | Use the provider-approved WP-CLI and database-change path. |
-| `pressable` | Provider-dependent | Use the provider-approved WP-CLI and database-change path. |
-| `rocket-net` | Provider-dependent | Use the provider-approved WP-CLI and database-change path. |
-| `hostinger` | Provider-dependent | Use the provider-approved WP-CLI and database-change path. |
-| `bluehost` | Provider-dependent | Use the provider-approved WP-CLI and database-change path. |
-| `pantheon` | Provider-dependent | Use the provider-approved WP-CLI and database-change path. |
-| `wpcom` | Provider-dependent | Use the provider-approved WP-CLI and database-change path. |
-| `wpvip` | Provider-dependent | Use the provider-approved WP-CLI and database-change path. |
+| Managed hosting — `wpengine`, `kinsta`, `siteground`, `godaddy`, `cloudways`, `flywheel`, `pressable`, `rocket-net`, `hostinger`, `bluehost`, `pantheon`, `wpcom`, `wpvip` | Provider-dependent | Use the provider-approved WP-CLI and database-change path. |
 | `shared-cpanel` | Provider-dependent | Confirm backup and database-write controls before changes. |
 | `self-managed` | With operator approval | Take a database backup, then follow the upstream skill. |
 | `other` | Provider-dependent | Confirm backup, database-write, and diagnostic-plugin policy with the host. |
