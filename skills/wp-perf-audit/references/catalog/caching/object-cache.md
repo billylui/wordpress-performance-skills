@@ -44,7 +44,7 @@ the WordPress object cache.
 The repository probe can identify when origin work deserves escalation:
 
 ```sh
-python3 skills/wp-perf-audit/scripts/perf-probe.py \
+python3 "$SKILL_DIR/scripts/perf-probe.py" \
   --site "$SITE_URL" --repeats 3 --quick --json object-cache-baseline.json
 ```
 
@@ -270,9 +270,9 @@ Verify at the object layer and the request layer:
 5. exercise authenticated/dynamic routes that actually depend on object reuse.
 
 ```sh
-python3 skills/wp-perf-audit/scripts/perf-probe.py \
+python3 "$SKILL_DIR/scripts/perf-probe.py" \
   --site "$SITE_URL" --repeats 3 --quick --label after --json object-cache-after.json
-python3 skills/wp-perf-audit/scripts/perf-probe.py \
+python3 "$SKILL_DIR/scripts/perf-probe.py" \
   --diff object-cache-baseline.json object-cache-after.json
 ```
 

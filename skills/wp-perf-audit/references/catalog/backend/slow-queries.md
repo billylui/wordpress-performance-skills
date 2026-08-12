@@ -22,7 +22,7 @@ listing, than on a simple page. Browser rendering and transferred bytes need not
 
 ### At tier 0 (public URL only)
 
-Run `python3 skills/wp-perf-audit/scripts/perf-probe.py --site "$SITE_URL" --repeats 7 --quick --json baseline.json` with repeated
+Run `python3 "$SKILL_DIR/scripts/perf-probe.py" --site "$SITE_URL" --repeats 7 --quick --json baseline.json` with repeated
 `--url` values for a simple page, the suspect archive or search page, and a deliberately missing
 path. Confirm the latter row has `http_status: 404`, then compare `origin_ttfb_ms` and the raw
 `origin_ttfb_samples_ms` between templates.
@@ -83,7 +83,7 @@ write cost. Production profiling tools can add overhead.
 ## Verify
 
 Repeat the same URLs and sample count after warming caches, then use
-`python3 skills/wp-perf-audit/scripts/perf-probe.py --diff baseline.json after.json`. Require a lower origin TTFB on the affected
+`python3 "$SKILL_DIR/scripts/perf-probe.py" --diff baseline.json after.json`. Require a lower origin TTFB on the affected
 template, unchanged output, and no regression on the simple page or 404.
 
 ## Rollback

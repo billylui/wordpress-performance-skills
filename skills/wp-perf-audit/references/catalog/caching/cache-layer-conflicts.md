@@ -38,7 +38,7 @@ keys and invalidations are deliberately coordinated.
 First separate uncached-origin render cost from the bare visitor path:
 
 ```sh
-python3 skills/wp-perf-audit/scripts/perf-probe.py \
+python3 "$SKILL_DIR/scripts/perf-probe.py" \
   --site "$SITE_URL" --repeats 3 --quick --json conflict-baseline.json
 ```
 
@@ -200,9 +200,9 @@ Follow the documented inner-to-outer purge path, then:
 5. capture the after probe and compare both origin and edge medians.
 
 ```sh
-python3 skills/wp-perf-audit/scripts/perf-probe.py \
+python3 "$SKILL_DIR/scripts/perf-probe.py" \
   --site "$SITE_URL" --repeats 3 --quick --label after --json conflict-after.json
-python3 skills/wp-perf-audit/scripts/perf-probe.py \
+python3 "$SKILL_DIR/scripts/perf-probe.py" \
   --diff conflict-baseline.json conflict-after.json
 ```
 

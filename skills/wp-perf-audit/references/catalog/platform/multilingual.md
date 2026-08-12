@@ -45,7 +45,7 @@ The cost model depends on architecture:
 Run the evidence-bearing detector:
 
 ```sh
-python3 skills/wp-perf-audit/scripts/fingerprint.py https://example.com/ --pages 2 --json fingerprint.json --quiet
+python3 "$SKILL_DIR/scripts/fingerprint.py" https://example.com/ --pages 2 --json fingerprint.json --quiet
 ```
 
 Read `profile.multilingual.value`, `confidence`, and `evidence` together. Public markers include vendor-namespaced asset paths, class tokens, and cookies for the exact identifiers `wpml`, `polylang`, `translatepress`, `weglot`, `gtranslate`, and `multilingualpress`.

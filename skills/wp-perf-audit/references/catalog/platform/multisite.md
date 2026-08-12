@@ -35,7 +35,7 @@ By default, `wp_users` and `wp_usermeta` are shared network-wide rather than dup
 Run:
 
 ```sh
-python3 skills/wp-perf-audit/scripts/fingerprint.py https://example.com/ --json fingerprint.json --quiet
+python3 "$SKILL_DIR/scripts/fingerprint.py" https://example.com/ --json fingerprint.json --quiet
 ```
 
 The expected public result is `profile.multisite.value: "unknown"` with no invented confidence. Publicly visible `/wp-content/uploads/sites/<number>/` URLs are circumstantial evidence of per-site uploads, not definitive proof of the current topology: copied media and legacy paths can outlive a configuration.
