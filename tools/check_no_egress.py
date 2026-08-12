@@ -62,14 +62,20 @@ URL_RE = re.compile(r"""["'`]?(?:https?|wss?|ftp)://([A-Za-z0-9._~-]+(?::\d+)?)"
 # least one dot and a 2+ character alphabetic TLD, so it will not fire on "utf-8" or "wp-content".
 BARE_HOST_RE = re.compile(r"""["']((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})["']""")
 
-# Filenames look exactly like hostnames — "blocking.css" and "wp-load.php" both parse as
-# label-dot-TLD. Anything whose final segment is a known file extension is a filename, not a
-# host, so it never reaches the allowlist check. Scheme-qualified URLs are matched by URL_RE
-# and are unaffected by this list, so a genuine "https://evil.io/x.css" is still caught.
-FILE_EXTENSIONS = frozenset(
+# A bare quoted string only counts as a hostname when its final segment is a plausible public
+# suffix. Anything else that is merely dotted — a filename ("blocking.css", "snapshot.bak"), a
+# JSON field path ("target.kind"), a dotted identifier — is not a host and must not be flagged.
+#
+# This is an allowlist rather than a filename denylist on purpose. A denylist has to anticipate
+# every extension and every dotted convention that will ever appear, and loses that race; an
+# allowlist of suffixes is small and stable. Scheme-qualified URLs are matched separately by
+# URL_RE and are unaffected, so "https://evil.io/payload.css" is still caught either way — and
+# a bare hostname with no scheme cannot be fetched without one anyway.
+PLAUSIBLE_TLDS = frozenset(
     """
-    bmp css csv gif gz html ico ini jpeg jpg js json log map md mjs mo otf pdf php png po py
-    sh sql svg tar template ts tsx txt webp woff woff2 xml yaml yml zip
+    com org net edu gov mil int io dev app co ai cloud sh me info biz us uk ca de fr jp cn ru
+    xyz tech site online store page run link live gg to ly is it es nl se no fi pl br in au nz
+    eu tv cc pro name mobi asia press blog wiki design studio agency media host website
     """.split()
 )
 
@@ -99,7 +105,7 @@ def scan_file(path: Path) -> list[tuple[int, str, str]]:
         found |= {
             host_of(m)
             for m in BARE_HOST_RE.findall(line)
-            if m.rsplit(".", 1)[-1].lower() not in FILE_EXTENSIONS
+            if m.rsplit(".", 1)[-1].lower() in PLAUSIBLE_TLDS
         }
         for host in sorted(found):
             if host.lower() not in ALLOWED_HOSTS:

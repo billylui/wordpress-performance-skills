@@ -107,7 +107,8 @@ flowchart LR
 
 *Fingerprint first, so every later step knows which stack it is standing on. Measure, attribute,
 then gate: on managed hosts that ban caching plugins, "install WP Rocket" is not merely unhelpful
-advice — on WP Engine it risks suspension, and the gate refuses it. Every applied change gets a
+advice — hosts that publish a disallowed list remove such plugins, and the gate refuses it.
+Every applied change gets a
 rollback snapshot, a purge on the layer that actually holds the stale copy, and a verification
 against what a real visitor receives. Then it measures again.*
 

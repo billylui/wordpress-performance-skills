@@ -37,9 +37,9 @@ read whole, is the unit.
 4. **No time-sensitive facts.** No market-share percentages, no "as of version X", no dated
    claims. Those rot and this file cannot be re-verified at read time. Version-specific behaviour
    goes in a collapsed `<details>` block labelled as historical.
-5. **The Fix section is host-aware or it is wrong.** A fix that gets a site suspended on WP Engine
-   is worse than no fix. If a change is prohibited on some hosting, that belongs in Fix, not in a
-   footnote.
+5. **The Fix section is host-aware or it is wrong.** A fix the platform will strip out, or that
+   fights the host's own cache, is worse than no fix. If a change is prohibited on some hosting,
+   that belongs in Fix, not in a footnote.
 6. **Cross-link, don't duplicate.** Backend profiling depth belongs to
    [`WordPress/agent-skills`](https://github.com/WordPress/agent-skills). Link it and move on.
 7. **Every claim about what a browser or WordPress does must be checkable.** Prefer "the element
