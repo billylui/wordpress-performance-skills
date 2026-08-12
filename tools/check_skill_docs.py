@@ -61,11 +61,18 @@ HISTORY_MARKERS = ("<details>", "historical", "old pattern", "deprecated")
 
 
 def local_links(path: Path) -> list[tuple[int, str]]:
-    """Return (line number, target) for each markdown link to a local path."""
+    """Return (line number, target) for each markdown link to a local path.
+
+    Templates legitimately contain `{{PLACEHOLDER}}` link targets — the report template links a
+    finding to whichever catalog entry it came from, and that path is filled in per report. A
+    placeholder is a slot, not a broken link, so it is skipped rather than flagged.
+    """
     found: list[tuple[int, str]] = []
     for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         for target in LINK_RE.findall(line):
             if target.startswith(("http://", "https://", "#", "mailto:")):
+                continue
+            if "{{" in target and "}}" in target:
                 continue
             found.append((lineno, target.split("#", 1)[0]))
     return found

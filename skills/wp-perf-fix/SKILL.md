@@ -15,35 +15,47 @@ against. Without a baseline there is nothing to prove afterwards, so capture one
 One change at a time. Never batch, never parallelize, never continue past a failed step.
 
 ```
-plan → validate → approve → snapshot → apply → purge → verify → measure → record
+plan → validate --preflight → approve → snapshot → validate → apply
+     → purge → verify → measure → record
 ```
 
 The order is load-bearing. Snapshot precedes apply so rollback exists before it is needed. Purge
 precedes verify so verification reads the new state rather than a cached copy of the old one.
 
+**Validation happens twice, at two different gates, because they answer different questions.**
+Preflight asks *is this change allowed at all* — before anyone is asked to approve it. The second
+pass asks *is it safe to execute right now*, which additionally requires that approval was
+actually granted and the snapshot actually exists. A single pass cannot do both: the things the
+second gate checks for do not exist yet when the first one runs.
+
 ### 1. Plan
 
 Write a change plan to disk before touching anything — schema in
-[docs/CONTRACTS.md](../../docs/CONTRACTS.md#schema-change-plan). One entry per change, each
+[docs/CONTRACTS.md](https://github.com/billylui/wordpress-performance-skills/blob/main/docs/CONTRACTS.md#schema-change-plan)
+(absolute, so it resolves even when this skill is copied on its own). One entry per change, each
 naming its catalog entry, risk lane, snapshot artifact, purge layers, and the metric it is
 expected to move.
 
 State `expected_effect` **before** the change. Deciding afterwards what counts as success is how
 a change that did nothing gets recorded as a win.
 
-### 2. Validate
+### 2. Validate — preflight
 
 ```bash
-python3 skills/wp-perf-fix/scripts/validate_plan.py plan.json --stack stack.json
+python3 skills/wp-perf-fix/scripts/validate_plan.py plan.json --stack stack.json --preflight
 ```
 
 **A non-zero exit stops the run.** Do not apply a change from a plan that failed validation, and
 do not edit the validator to make a plan pass. If validation is wrong, the plan is what changes.
 
-The validator enforces what the schema promises: no prohibited change for this host, a snapshot
-artifact that exists on disk, approval recorded per change, purge layers that match the cache
-layers actually detected, an `expected_effect`, a resolvable catalog entry, and a tier sufficient
-for the change kind.
+Preflight checks everything knowable before anyone is asked to approve: the document shape, no
+prohibited change for this host, a risk lane appropriate to the change kind, a resolvable catalog
+entry, a tier sufficient for that kind, purge layers matching the cache layers actually detected,
+an `expected_effect`, and that the `--stack` profile really belongs to the site in the plan.
+
+**The validator derives what safety a change requires; it never reads that from the plan.** A
+plan declaring it needs no approval or no snapshot is refused rather than obeyed — a document
+cannot be permitted to switch off the check that inspects it.
 
 ### 3. Approve
 
@@ -61,6 +73,16 @@ Capture the artifact named in the plan and confirm it exists before proceeding. 
 
 A snapshot that was never written is the failure mode that turns a small mistake into an
 incident. Verify the file, do not assume the command worked.
+
+### 4b. Validate — execution readiness
+
+```bash
+python3 skills/wp-perf-fix/scripts/validate_plan.py plan.json --stack stack.json
+```
+
+The same checks as preflight, plus the two that can only be true by now: approval actually
+granted, and the snapshot artifact actually present and non-empty on disk. This is the last gate
+before anything changes, and it is the one that catches a snapshot step that silently did nothing.
 
 ### 5. Apply
 
