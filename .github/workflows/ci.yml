@@ -1,0 +1,103 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.9 is the floor the scripts promise (docs/CONTRACTS.md invariant 1): operators run
+        # these on unknown machines, often the same older hosting we are auditing. Testing the
+        # floor and a current release catches accidental use of newer syntax.
+        python-version: ["3.9", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Byte-compile every script
+        run: |
+          shopt -s globstar nullglob
+          files=(skills/**/*.py evals/**/*.py tools/**/*.py)
+          if [ ${#files[@]} -eq 0 ]; then echo "no python files yet"; exit 0; fi
+          printf '%s\n' "${files[@]}"
+          python -m py_compile "${files[@]}"
+
+      - name: Assert standard library only
+        # No requirements.txt, no setup.py, no pyproject with dependencies. If one of these
+        # appears, the stdlib-only guarantee has been broken and operators can no longer run
+        # these scripts on an arbitrary machine.
+        run: |
+          for f in requirements.txt setup.py Pipfile poetry.lock; do
+            if [ -e "$f" ]; then echo "FAIL: $f present; scripts must be stdlib-only"; exit 1; fi
+          done
+          echo "OK: no dependency manifests present"
+
+      - name: No third-party egress
+        run: python tools/check_no_egress.py
+
+      - name: Shell scripts parse
+        run: |
+          shopt -s globstar nullglob
+          for f in **/*.sh; do bash -n "$f" && echo "ok: $f"; done
+
+  skill-metadata:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Validate SKILL.md frontmatter
+        # Enforces the Agent Skills spec: name <=64 chars, lowercase/digits/hyphens only, no
+        # reserved words; description non-empty and <=1024 chars. A skill that violates these
+        # may silently fail to load or fail to be selected.
+        run: |
+          python - <<'PY'
+          import re, sys, pathlib
+          fails = []
+          skills = sorted(pathlib.Path("skills").glob("*/SKILL.md"))
+          if not skills:
+              print("no SKILL.md files yet - nothing to validate")
+              sys.exit(0)
+          for p in skills:
+              text = p.read_text(encoding="utf-8")
+              m = re.match(r"^---\n(.*?)\n---\n", text, re.S)
+              if not m:
+                  fails.append(f"{p}: missing YAML frontmatter"); continue
+              fm = m.group(1)
+              name = re.search(r"^name:\s*(.+)$", fm, re.M)
+              desc = re.search(r"^description:\s*(.+)$", fm, re.M | re.S)
+              if not name:
+                  fails.append(f"{p}: no name field")
+              else:
+                  n = name.group(1).strip().strip("\"'")
+                  if len(n) > 64: fails.append(f"{p}: name >64 chars")
+                  if not re.fullmatch(r"[a-z0-9-]+", n): fails.append(f"{p}: name must be [a-z0-9-]+, got {n!r}")
+                  if "claude" in n or "anthropic" in n: fails.append(f"{p}: name uses a reserved word")
+              if not desc:
+                  fails.append(f"{p}: no description field")
+              else:
+                  d = desc.group(1).strip()
+                  if not d: fails.append(f"{p}: description empty")
+                  if len(d) > 1024: fails.append(f"{p}: description >1024 chars")
+              body = text[m.end():]
+              n_lines = len(body.splitlines())
+              if n_lines > 500:
+                  fails.append(f"{p}: body is {n_lines} lines; keep under 500 (split into references/)")
+          for f in fails: print("FAIL:", f)
+          print(f"checked {len(skills)} skill(s)")
+          sys.exit(1 if fails else 0)
+          PY

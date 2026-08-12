@@ -1,0 +1,18 @@
+{
+  "expected_behavior": [
+    "Reports public-page findings that are actually observable",
+    "States that autoloaded option size, slow queries, cron behavior, and database configuration are unknown at this tier",
+    "contains: unknown at this tier"
+  ],
+  "files": [],
+  "fixture": "plain-markup-seeded-defects",
+  "id": "tier-degradation-public",
+  "must_not": [
+    "Claims a backend finding as fact from only a public URL",
+    "not_contains: wp_perf_fixture_autoload is 327680 bytes"
+  ],
+  "query": "With only the public URL http://localhost:8081 and no credentials, shell, WP-CLI, code, or database access, audit what you can and clearly delimit every backend finding you cannot establish.",
+  "skills": [
+    "wp-perf-audit"
+  ]
+}

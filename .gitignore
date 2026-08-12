@@ -1,0 +1,24 @@
+# Local, operator-specific verification config — never committed.
+# Live-site regression fixtures point at real client sites; their URLs and any
+# credentials stay on the operator's machine. See docs/CONTRACTS.md.
+evals/local/
+*.local.json
+*.local.env
+
+# Probe output written during ad-hoc runs
+/out/
+*-metrics.json
+*-report.txt
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Reference source material copied in for a build lane; not part of the project.
+.reference-*
