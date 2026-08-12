@@ -144,7 +144,7 @@ stays visible rather than being forgotten.
 | End-to-end non-HTML refusal (`perf-probe` exit 4) | Needs an HTTPS endpoint serving non-HTML; defaulting to a third-party host would break this project's own no-egress promise. The predicate is covered in-process; only the CLI path is unproven | Operator sets `WP_PERF_TEST_NONHTML_URL` |
 | `wp-perf-fix` against a production host | Never executed against a real managed host. Purge paths and host-constraint tables are documentation-derived, not execution-verified | One low-risk change run end-to-end on a site the maintainer controls, ideally on a host with a published disallowed-plugin policy |
 | Full builder × cache eval matrix | Only a subset of `evals/fixtures/` combinations has been run, so stacks nobody has pointed the audit at may be misread | Run {Elementor, Block/FSE, Divi, classic} × {page-cache plugin, server cache, none} and record coverage |
-| Execution on a non-Claude-Code agent | Format conformance is proven — `skills-ref` passes and the cross-agent CLI lists both skills — but installation and execution have only been exercised on Claude Code | Install on one other agent and complete a tier-0 audit |
+| Execution on a browser-capable non-Claude-Code session | A tier-0 audit has been completed end to end on a second harness (Codex), including the report contract, but that session had no browser — so the Core Web Vitals path is unproven anywhere but here | Run an audit on another harness with a browser tool available, and confirm the rated rows carry a value and a `lab`/`field` source |
 
 ## 9. Hotfix lane
 

@@ -69,22 +69,40 @@ Stacks nobody has pointed the audit at may be misread.
 third-party host because the project promises no undeclared egress. The predicate itself is
 covered in-process; only the CLI path is unproven.
 
-### 5. Cross-harness usability — researched, not exhaustively tested
+### 5. Cross-harness usability — execution now verified on a second agent
 
-**What is established.** Both skills pass `skills-ref validate`, the reference implementation
-from the Agent Skills specification's own library, and that check runs in CI. The negative
-control was confirmed: the validator rejects a deliberately malformed skill, so the pass is
-meaningful. The cross-agent `skills` CLI reads this repository, reports `Found 2 skills`, and
-lists both with their descriptions — and it auto-detects the running agent, so per-agent install
-paths are its problem rather than ours. Both skills declare their runtime requirements in the
-spec's `compatibility` field, where a conforming client can read them before executing anything.
+**What is established.** Both skills pass `skills-ref validate`, the reference implementation from
+the Agent Skills specification's own library, and that check runs in CI. The negative control was
+confirmed: the validator rejects a deliberately malformed skill, so the pass is meaningful. The
+cross-agent `skills` CLI reads this repository, reports `Found 2 skills`, and lists both with their
+descriptions. Both skills declare their runtime requirements in the spec's `compatibility` field.
 
-**What is not.** Installation and execution have only been exercised on **Claude Code**. "Loads
-and runs correctly on Codex, Cursor, Copilot or Gemini CLI" remains an untested claim, however
-strong the format-level evidence is.
+**Execution on a second harness is no longer an untested claim.** Both skills were installed to
+`~/.codex/skills/` and validated in place, and `wp-perf-audit` then ran a complete tier-0 audit of a
+live production WordPress site under Codex — a different harness on a different vendor's model —
+driven only by a plain-language request naming the skill. It was not told how to run anything.
 
-**Fix:** install on one other agent and run a tier-0 audit. Roughly ten minutes, and it converts
-the strongest remaining assumption into evidence.
+What that run demonstrated, each verified independently rather than taken from the agent's own
+summary:
+
+- It resolved `$SKILL_DIR` through the discovery loop in `SKILL.md` and invoked the bundled scripts
+  from the installed location, not from a checkout.
+- It ran fingerprint, capabilities and probe in the documented order, and reported origin and edge
+  TTFB separately.
+- It produced a report in the contract's shape — every mandatory section, in order — and ran
+  `check_report.py` on its own draft. Re-validated here: conformant, zero problems.
+- All ten scorecard rows were present. Six were `unmeasured`, **each with its own specific reason**
+  rather than one blanket line, because the session had no browser. No rating was invented for any
+  of them, and the page-weight figure was labelled a floor with the count of unsized resources.
+
+**A useful negative result came first.** The same run in Codex's default sandbox has no outbound
+DNS, and the skill handled it exactly as written: it reported the environment as the blocker, did
+not label the site unreachable, and fabricated no metrics. That is the behaviour the compatibility
+field and the "say so plainly" instruction exist to produce, and it had never been observed.
+
+**What is still not established.** One harness is not every harness; Cursor, Copilot, Gemini CLI and
+the rest remain inference from format conformance. A browser-capable session on a non-Claude-Code
+harness has also not been exercised, so the Core Web Vitals path is unproven anywhere but here.
 
 ### 6. The escaped-bug taxonomy exists; the release contract is not yet exercised
 
