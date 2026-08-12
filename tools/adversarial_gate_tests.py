@@ -395,6 +395,70 @@ def main() -> int:
     expect_exit("unreachable host is still exit 3, not 4",
                 [PROBE, "--site", "https://nope-xyz-nores.invalid", "--quick", "--repeats", "1", "--quiet"], 3)
 
+    print("\n=== perf-probe.py — one dead host must not consume the whole payload walk ===")
+    # The real stall this guards against: font CSS pointed at a staging domain that resolved but
+    # never answered, so every request burned the full timeout. --max-assets caps the count, which
+    # bounds the symptom; only the breaker stops one host eating the budget.
+    #
+    # Driven against the breaker itself rather than over the network, because reproducing it end
+    # to end needs a host that accepts connections and never replies — which is either a
+    # third-party endpoint (undeclared egress) or a fixture that must hang for a full timeout.
+    probe.BREAKER.reset()
+    dead, alive = "dead.invalid", "alive.invalid"
+
+    # Positive control: a host under the limit stays in service. Without this, every negative
+    # case below would also pass against a breaker that simply refused everything.
+    for _ in range(probe.HOST_TIMEOUT_CIRCUIT_LIMIT - 1):
+        probe.BREAKER.record_outcome(dead, True)
+    record(not probe.BREAKER.is_open(dead),
+           "CONTROL: a host below the timeout limit is still requested",
+           f"open after {probe.HOST_TIMEOUT_CIRCUIT_LIMIT - 1} of {probe.HOST_TIMEOUT_CIRCUIT_LIMIT}")
+
+    probe.BREAKER.record_outcome(dead, True)
+    record(probe.BREAKER.is_open(dead),
+           "a host is cut off after the limit of consecutive timeouts",
+           f"still open={probe.BREAKER.is_open(dead)} after {probe.HOST_TIMEOUT_CIRCUIT_LIMIT}")
+
+    record(not probe.BREAKER.is_open(alive),
+           "cutting one host off does not cut off any other",
+           f"unrelated host open={probe.BREAKER.is_open(alive)}")
+
+    # A merely slow host must recover, or an intermittently loaded CDN gets written off for the
+    # rest of the run and its bytes silently leave the total.
+    probe.BREAKER.reset()
+    for _ in range(probe.HOST_TIMEOUT_CIRCUIT_LIMIT - 1):
+        probe.BREAKER.record_outcome(alive, True)
+    probe.BREAKER.record_outcome(alive, False)
+    for _ in range(probe.HOST_TIMEOUT_CIRCUIT_LIMIT - 1):
+        probe.BREAKER.record_outcome(alive, True)
+    record(not probe.BREAKER.is_open(alive),
+           "one answered request resets the run of timeouts",
+           f"open={probe.BREAKER.is_open(alive)} after an answer broke the streak")
+
+    # Only timeouts may trip it. A refused or unresolvable host fails in milliseconds and is
+    # self-limiting; counting those would cut off hosts that cost the walk nothing.
+    probe.BREAKER.reset()
+    for _ in range(probe.HOST_TIMEOUT_CIRCUIT_LIMIT * 2):
+        probe.BREAKER.record_outcome(dead, False)
+    record(not probe.BREAKER.is_open(dead),
+           "fast failures do not trip the breaker; only timeouts do",
+           f"open={probe.BREAKER.is_open(dead)} after non-timeout failures")
+
+    record(probe.CURL_TIMEOUT_CODE in probe.UNREACHABLE_CURL_CODES,
+           "the code the breaker counts is curl's timeout code",
+           f"CURL_TIMEOUT_CODE={probe.CURL_TIMEOUT_CODE}")
+
+    # Nothing skipped may be counted as zero bytes — that would turn a dead host into a quietly
+    # smaller page, which is the exact failure the payload totals rule exists to prevent.
+    probe.BREAKER.reset()
+    for _ in range(probe.HOST_TIMEOUT_CIRCUIT_LIMIT):
+        probe.BREAKER.record_outcome(dead, True)
+    skipped_result = probe.head_size("/nonexistent-curl", f"https://{dead}/font.woff2", "font")
+    record(skipped_result["size_bytes"] is None and skipped_result.get("circuit_skipped") is True,
+           "a resource on a cut-off host is unsized, never zero",
+           f"size_bytes={skipped_result['size_bytes']}, marked={skipped_result.get('circuit_skipped')}")
+    probe.BREAKER.reset()
+
     failed = [r for r in results if not r[0]]
     print(f"\n=== {len(results) - len(failed)}/{len(results)} passed, {len(skipped)} skipped ===")
     for _ok, name, detail in failed:
