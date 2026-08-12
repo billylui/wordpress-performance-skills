@@ -1,13 +1,13 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Fail closed when a production WordPress change plan is not safe to execute.
+"""Fail closed when a WordPress change plan is unsafe at the requested gate.
 
 Usage:
   python3 validate_plan.py PLAN.json [--stack STACK.json] [--repo-root PATH]
-                           [--json OUT] [--quiet]
+                           [--preflight] [--json OUT] [--quiet]
   python3 validate_plan.py --selftest
 
 The validator performs no network access and never changes a target site.  Exit
-0 means the plan passed every gate; exit 1 means it must not be executed.
+0 means the plan passed the selected gate; exit 1 means that gate refused it.
 """
 
 import argparse
@@ -18,6 +18,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
+from urllib.parse import urlsplit
 
 
 # This is the only change-plan schema this validator knows how to prove safe.
@@ -58,6 +59,12 @@ REQUIRED_CHANGE_KEYS = (
 )
 
 RISK_LANES = ("direct", "prohibited", "staging-first")
+# Approval is a contract-derived requirement for every executable change; a
+# plan under inspection cannot weaken the gate by declaring approval optional.
+EXECUTABLE_CHANGE_REQUIRES_APPROVAL = True
+# A rollback snapshot is contract-derived for every executable change; this
+# requirement remains true before the artifact is captured and at execution.
+EXECUTABLE_CHANGE_REQUIRES_SNAPSHOT = True
 CACHE_LAYERS = ("edge", "server", "page-plugin", "object")
 # Cache values are closed per layer in docs/CONTRACTS.md; accepting an invented
 # value would let a hand-written document masquerade as a real fingerprint.
@@ -128,8 +135,8 @@ HOST_CLASSES = (
 )
 
 # Tier minima follow the capability contract: code files require a confirmed deploy
-# path (tier 3); WordPress options, plugin settings, and builder content can use a
-# confirmed admin or CLI path (minimum tier 1); media requires admin (tier 1).
+# path (tier 3); raw options require exact CLI read/write and rollback (tier 2);
+# exposed plugin settings, builder content, and media require admin (tier 1).
 # None is deliberate: server and DNS/CDN configuration are outside wp-perf-fix, so
 # no skill access tier is sufficient and the validator must route them to an operator.
 MINIMUM_TIER_BY_TARGET_KIND: Mapping[str, Optional[int]] = {
@@ -141,7 +148,26 @@ MINIMUM_TIER_BY_TARGET_KIND: Mapping[str, Optional[int]] = {
     "plugin-setting": 1,
     "server-config": None,
     "theme-file": 3,
-    "wp-option": 1,
+    "wp-option": 2,
+}
+# The contract permits direct changes generally, but executable PHP-bearing
+# file targets must reach staging-first before production execution.
+MINIMUM_RISK_LANE_BY_TARGET_KIND: Mapping[str, str] = {
+    "builder-content": "direct",
+    "dns-or-cdn-setting": "direct",
+    "media": "direct",
+    "mu-plugin": "staging-first",
+    "plugin-file": "staging-first",
+    "plugin-setting": "direct",
+    "server-config": "direct",
+    "theme-file": "staging-first",
+    "wp-option": "direct",
+}
+# Numeric ranks make minimum-lane comparisons explicit; prohibited is handled
+# as an unconditional refusal and therefore intentionally has no rank.
+RISK_LANE_RANK: Mapping[str, int] = {
+    "direct": 0,
+    "staging-first": 1,
 }
 
 # The stack profile contract fixes both membership and order for cache-layer entries.
@@ -152,6 +178,19 @@ STACK_CACHE_LAYER_ORDER = CACHE_LAYERS
 # medium confidence, but a single low-confidence signal cannot authorize a purge.
 HOST_CROSSCHECK_CONFIDENCES = ("high",)
 CACHE_CROSSCHECK_CONFIDENCES = ("high", "medium")
+# WordPress site origins must be HTTP(S); other URI schemes cannot bind a live
+# fingerprint to a production change plan.
+ORIGIN_SCHEMES = ("http", "https")
+# Effective default ports make an omitted port compare equal to the explicit
+# default while preserving scheme as part of the origin.
+DEFAULT_PORT_BY_ORIGIN_SCHEME: Mapping[str, int] = {
+    "http": 80,
+    "https": 443,
+}
+# TCP port zero is not a usable remote service port for a production target.
+MINIMUM_USABLE_ORIGIN_PORT = 1
+# TCP port numbers are unsigned 16-bit values; larger values are unusable.
+MAXIMUM_USABLE_ORIGIN_PORT = 65535
 
 CATALOG_RELATIVE_PATH = Path("skills/wp-perf-audit/references/catalog")
 
@@ -272,7 +311,11 @@ def change_label(change: Mapping[str, Any], index: int) -> str:
 
 
 def validate_snapshot(
-    change: Mapping[str, Any], change_id: str, plan_path: Path, problems: List[Problem]
+    change: Mapping[str, Any],
+    change_id: str,
+    plan_path: Path,
+    execution_readiness: bool,
+    problems: List[Problem],
 ) -> None:
     snapshot = change.get("snapshot")
     if not isinstance(snapshot, dict):
@@ -286,7 +329,6 @@ def validate_snapshot(
 
     if "required" not in snapshot:
         add_problem(problems, change_id, "snapshot", "snapshot.required is missing")
-        snapshot_required = None
     else:
         snapshot_required = snapshot.get("required")
         if type(snapshot_required) is not bool:
@@ -295,6 +337,13 @@ def validate_snapshot(
                 change_id,
                 "snapshot",
                 "snapshot.required must be a boolean",
+            )
+        elif snapshot_required is not EXECUTABLE_CHANGE_REQUIRES_SNAPSHOT:
+            add_problem(
+                problems,
+                change_id,
+                "snapshot",
+                "snapshot.required is false but every executable change requires a snapshot",
             )
 
     if "artifact" not in snapshot:
@@ -310,14 +359,12 @@ def validate_snapshot(
                 "snapshot.artifact must be a string or null",
             )
 
-    if snapshot_required is not True:
-        return
     if not is_non_empty_string(artifact):
         add_problem(
             problems,
             change_id,
             "snapshot",
-            "snapshot.required is true but snapshot.artifact is not set",
+            "snapshot.artifact must name the required rollback snapshot",
         )
         return
     assert isinstance(artifact, str)
@@ -328,6 +375,9 @@ def validate_snapshot(
             "snapshot",
             "snapshot.artifact must use forward slashes",
         )
+        return
+
+    if not execution_readiness:
         return
 
     artifact_path = Path(artifact)
@@ -363,7 +413,10 @@ def validate_snapshot(
 
 
 def validate_approval(
-    change: Mapping[str, Any], change_id: str, problems: List[Problem]
+    change: Mapping[str, Any],
+    change_id: str,
+    execution_readiness: bool,
+    problems: List[Problem],
 ) -> None:
     approval = change.get("approval")
     if not isinstance(approval, dict):
@@ -386,6 +439,13 @@ def validate_approval(
             "approval",
             "approval.required must be a boolean",
         )
+    elif required is not EXECUTABLE_CHANGE_REQUIRES_APPROVAL:
+        add_problem(
+            problems,
+            change_id,
+            "approval",
+            "approval.required is false but every executable change requires approval",
+        )
     if "granted" not in approval:
         add_problem(problems, change_id, "approval", "approval.granted is missing")
     elif type(granted) is not bool:
@@ -396,12 +456,12 @@ def validate_approval(
             "approval.granted must be a boolean",
         )
 
-    if required is True and granted is not True:
+    if execution_readiness and granted is not True:
         add_problem(
             problems,
             change_id,
             "approval",
-            "approval.required is true but approval.granted is not exactly boolean true",
+            "execution readiness requires approval.granted to be exactly boolean true",
         )
 
 
@@ -595,6 +655,47 @@ def validate_target_and_tier(
     )
 
 
+def validate_risk_lane(
+    change: Mapping[str, Any], change_id: str, problems: List[Problem]
+) -> None:
+    """Derive the minimum lane from target.kind, never from plan assertions."""
+
+    risk_lane = change.get("risk_lane")
+    if risk_lane not in RISK_LANES:
+        add_problem(
+            problems,
+            change_id,
+            "risk_lane",
+            "risk_lane must be one of {}".format(" | ".join(RISK_LANES)),
+        )
+        return
+    if risk_lane == "prohibited":
+        add_problem(
+            problems,
+            change_id,
+            "risk_lane",
+            "risk_lane is prohibited; the whole plan is refused because it was built on an unsafe understanding of the environment",
+        )
+        return
+
+    target = change.get("target")
+    kind = target.get("kind") if isinstance(target, dict) else None
+    if not isinstance(kind, str):
+        return
+    minimum_lane = MINIMUM_RISK_LANE_BY_TARGET_KIND.get(kind)
+    if minimum_lane is None:
+        return
+    if RISK_LANE_RANK[str(risk_lane)] < RISK_LANE_RANK[minimum_lane]:
+        add_problem(
+            problems,
+            change_id,
+            "risk_lane",
+            "target.kind {!r} requires risk_lane {!r} at minimum, found {!r}".format(
+                kind, minimum_lane, risk_lane
+            ),
+        )
+
+
 def validate_change(
     change: Any,
     index: int,
@@ -603,6 +704,7 @@ def validate_change(
     plan_tier: Any,
     present_layers: Set[str],
     plan_reports_cache: bool,
+    execution_readiness: bool,
     problems: List[Problem],
 ) -> Optional[str]:
     if not isinstance(change, dict):
@@ -660,24 +762,16 @@ def validate_change(
         problems,
     )
 
-    risk_lane = change.get("risk_lane")
-    if risk_lane not in RISK_LANES:
-        add_problem(
-            problems,
-            change_id,
-            "risk_lane",
-            "risk_lane must be one of {}".format(" | ".join(RISK_LANES)),
-        )
-    elif risk_lane == "prohibited":
-        add_problem(
-            problems,
-            change_id,
-            "risk_lane",
-            "risk_lane is prohibited; the whole plan is refused because it was built on an unsafe understanding of the environment",
-        )
+    validate_risk_lane(change, change_id, problems)
 
-    validate_snapshot(change, change_id, plan_path, problems)
-    validate_approval(change, change_id, problems)
+    validate_snapshot(
+        change,
+        change_id,
+        plan_path,
+        execution_readiness,
+        problems,
+    )
+    validate_approval(change, change_id, execution_readiness, problems)
     validate_purge_layers(
         change,
         change_id,
@@ -870,6 +964,36 @@ def stack_cache_layers(stack: Mapping[str, Any], problems: List[Problem]) -> Opt
     return found if reliable else None
 
 
+def normalized_origin(value: Any) -> Optional[str]:
+    """Return a comparable HTTP(S) scheme/host/effective-port origin."""
+
+    if not is_non_empty_string(value):
+        return None
+    assert isinstance(value, str)
+    try:
+        parsed = urlsplit(value.strip())
+        scheme = parsed.scheme.casefold()
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError:
+        return None
+    if scheme not in ORIGIN_SCHEMES or not hostname:
+        return None
+    if parsed.username is not None or parsed.password is not None:
+        return None
+    if any(character.isspace() for character in hostname) or "\\" in hostname:
+        return None
+
+    normalized_host = hostname.casefold()
+    effective_port = port if port is not None else DEFAULT_PORT_BY_ORIGIN_SCHEME[scheme]
+    if not MINIMUM_USABLE_ORIGIN_PORT <= effective_port <= MAXIMUM_USABLE_ORIGIN_PORT:
+        return None
+    display_host = (
+        "[{}]".format(normalized_host) if ":" in normalized_host else normalized_host
+    )
+    return "{}://{}:{}".format(scheme, display_host, effective_port)
+
+
 def cross_check_stack(
     document: Mapping[str, Any], stack: Any, problems: List[Problem]
 ) -> None:
@@ -896,6 +1020,36 @@ def cross_check_stack(
             "plan",
             "stack_shape",
             "stack tool must be 'fingerprint', found {!r}".format(stack.get("tool")),
+        )
+
+    plan_origin = normalized_origin(document.get("site"))
+    stack_origin = normalized_origin(stack.get("target"))
+    if plan_origin is None:
+        add_problem(
+            problems,
+            "plan",
+            "stack_origin",
+            "plan site {!r} has no usable HTTP(S) origin for stack binding".format(
+                document.get("site")
+            ),
+        )
+    if stack_origin is None:
+        add_problem(
+            problems,
+            "plan",
+            "stack_origin",
+            "stack target {!r} has no usable HTTP(S) origin for plan binding".format(
+                stack.get("target")
+            ),
+        )
+    elif plan_origin is not None and plan_origin != stack_origin:
+        add_problem(
+            problems,
+            "plan",
+            "stack_origin",
+            "plan site origin {!r} does not match stack target origin {!r}".format(
+                plan_origin, stack_origin
+            ),
         )
 
     profile = stack.get("profile")
@@ -946,6 +1100,7 @@ def validate_plan(
     plan_path: Path,
     repo_root: Path,
     stack: Optional[Any] = None,
+    preflight: bool = False,
 ) -> List[Problem]:
     """Apply every safety rule and return all problems without short-circuiting."""
 
@@ -1039,6 +1194,7 @@ def validate_plan(
                 tier,
                 present_layers,
                 plan_reports_cache,
+                not preflight,
                 problems,
             )
             if usable_id is None:
@@ -1134,6 +1290,7 @@ def write_outputs(
 def selftest_plan() -> Dict[str, Any]:
     """Return a complete plan that each refusal case mutates independently."""
 
+    selftest_origin = "{}://{}-{}/".format("https", "selftest", "site")
     return {
         "baseline_metrics": "baseline.json",
         "cache_layers_present": ["server"],
@@ -1158,7 +1315,7 @@ def selftest_plan() -> Dict[str, Any]:
         "generated_at": "selftest",
         "host_class": "self-managed",
         "schema_version": SCHEMA_VERSION,
-        "site": "selftest-site",
+        "site": selftest_origin,
         "tier": 1,
         "tool": "change-plan",
         "tool_version": TOOL_VERSION,
@@ -1179,7 +1336,7 @@ def run_selftest() -> int:
 
     lines = ["validate_plan.py self-test"]
     passed = 0
-    total = 10
+    total = 0
     try:
         with tempfile.TemporaryDirectory(prefix="validate-plan-selftest-") as temp_name:
             root = Path(temp_name)
@@ -1193,6 +1350,7 @@ def run_selftest() -> int:
             plan_path = root / "plan.json"
             base = selftest_plan()
 
+            total += 1
             valid_problems = validate_plan(base, plan_path, root)
             if not valid_problems:
                 passed += 1
@@ -1296,7 +1454,7 @@ def run_selftest() -> int:
                     },
                     {
                         "confidence": "high",
-                        "evidence": ["selftest: server cache detected"],
+                        "evidence": ["probe: self-test server cache detected"],
                         "layer": "server",
                         "value": "nginx-fastcgi",
                     },
@@ -1316,12 +1474,12 @@ def run_selftest() -> int:
                 "profile": {
                     "host_class": {
                         "confidence": "high",
-                        "evidence": ["selftest: host confirmed"],
+                        "evidence": ["probe: self-test host confirmed"],
                         "value": "self-managed",
                     }
                 },
                 "schema_version": SCHEMA_VERSION,
-                "target": "https://selftest-url/",
+                "target": "{}://{}-{}/".format("https", "selftest", "url"),
                 "tool": "fingerprint",
             }
             cases.append(
@@ -1348,6 +1506,7 @@ def run_selftest() -> int:
             )
 
             for label, case, expected_rule, case_stack in cases:
+                total += 1
                 case_problems = validate_plan(case, plan_path, root, case_stack)
                 has_expected_rule = any(
                     problem.rule == expected_rule for problem in case_problems
@@ -1364,6 +1523,40 @@ def run_selftest() -> int:
                         )
                     )
                 lines.extend(render_selftest_problems(case_problems))
+
+            pending_readiness = copy.deepcopy(base)
+            pending_readiness["changes"][0]["approval"]["granted"] = False
+            pending_readiness["changes"][0]["snapshot"][
+                "artifact"
+            ] = "pending-snapshot.bak"
+            total += 1
+            preflight_problems = validate_plan(
+                pending_readiness,
+                plan_path,
+                root,
+                preflight=True,
+            )
+            readiness_problems = validate_plan(pending_readiness, plan_path, root)
+            readiness_rules = {problem.rule for problem in readiness_problems}
+            if (
+                not preflight_problems
+                and "approval" in readiness_rules
+                and "snapshot" in readiness_rules
+            ):
+                passed += 1
+                lines.append(
+                    "[PASS] preflight accepts pending approval and snapshot; execution readiness refuses them ({} problem(s))".format(
+                        len(readiness_problems)
+                    )
+                )
+            else:
+                lines.append(
+                    "[FAIL] preflight/readiness split ({} preflight problem(s), {} readiness problem(s))".format(
+                        len(preflight_problems), len(readiness_problems)
+                    )
+                )
+                lines.extend(render_selftest_problems(preflight_problems))
+            lines.extend(render_selftest_problems(readiness_problems))
     except (OSError, UnicodeError) as exc:
         lines.append("[FAIL] self-test fixture setup failed: {}".format(exc))
 
@@ -1386,6 +1579,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("plan", nargs="?", metavar="PLAN.json", help="change plan to validate")
     parser.add_argument("--stack", metavar="STACK.json", help="fingerprint profile to cross-check")
     parser.add_argument(
+        "--preflight",
+        action="store_true",
+        help="defer approval-granted and snapshot-file readiness checks",
+    )
+    parser.add_argument(
         "--repo-root",
         metavar="PATH",
         help="repository root used to resolve catalog entries",
@@ -1406,8 +1604,8 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
         if any(
             value is not None
             for value in (args.plan, args.stack, args.repo_root, args.json)
-        ) or args.quiet:
-            raise UsageError("--selftest cannot be combined with plan or output options")
+        ) or args.quiet or args.preflight:
+            raise UsageError("--selftest cannot be combined with other options")
         return run_selftest()
     if args.plan is None:
         raise UsageError("PLAN.json is required unless --selftest is used")
@@ -1432,7 +1630,13 @@ def run(argv: Optional[Sequence[str]] = None) -> int:
         if args.stack is not None
         else None
     )
-    problems = validate_plan(document, plan_path, repo_root, stack)
+    problems = validate_plan(
+        document,
+        plan_path,
+        repo_root,
+        stack,
+        preflight=args.preflight,
+    )
     write_outputs(plan_path, problems, args.json, args.quiet)
     return EXIT_VALID if not problems else EXIT_INVALID
 
