@@ -994,6 +994,51 @@ def normalized_origin(value: Any) -> Optional[str]:
     return "{}://{}:{}".format(scheme, display_host, effective_port)
 
 
+def path_segments(value: Any) -> Optional[Tuple[str, ...]]:
+    """Return the path of a URL as comparable segments, or None if it is unusable."""
+
+    if not is_non_empty_string(value):
+        return None
+    assert isinstance(value, str)
+    try:
+        parsed = urlsplit(value.strip())
+    except ValueError:
+        return None
+    return tuple(segment for segment in parsed.path.split("/") if segment)
+
+
+def identifies_same_installation(site_url: Any, probed_url: Any) -> Optional[bool]:
+    """Whether `probed_url` lies inside the WordPress installation rooted at `site_url`.
+
+    **Origin alone is not an installation identity.** Two entirely separate WordPress
+    installations routinely share one origin at different paths — `https://example.com/site-a/`
+    and `https://example.com/site-b/`. Comparing only scheme, host and port treats them as the
+    same site, which would let a fingerprint taken from one authorize host constraints and cache
+    assertions for the other. Those properties genuinely differ between such installations, so
+    the mistake is not academic: it can send a production change to the wrong place.
+
+    Containment rather than equality, because the two arguments are different kinds of URL. The
+    site root is compared against a URL that may legitimately be any page within it — a
+    fingerprint of `https://example.com/blog/some-post/` belongs to the site rooted at
+    `https://example.com/blog/`. Requiring equality there would refuse correct pairings.
+
+    Returns None when either URL has no usable origin, so the caller can report *why* rather
+    than silently treating unusable input as a mismatch.
+    """
+
+    site_origin = normalized_origin(site_url)
+    probed_origin = normalized_origin(probed_url)
+    if site_origin is None or probed_origin is None:
+        return None
+    if site_origin != probed_origin:
+        return False
+    site_path = path_segments(site_url)
+    probed_path = path_segments(probed_url)
+    if site_path is None or probed_path is None:
+        return None
+    return probed_path[: len(site_path)] == site_path
+
+
 def cross_check_stack(
     document: Mapping[str, Any], stack: Any, problems: List[Problem]
 ) -> None:
@@ -1042,13 +1087,18 @@ def cross_check_stack(
                 stack.get("target")
             ),
         )
-    elif plan_origin is not None and plan_origin != stack_origin:
+    elif plan_origin is not None and identifies_same_installation(
+        document.get("site"), stack.get("target")
+    ) is not True:
         add_problem(
             problems,
             "plan",
             "stack_origin",
-            "plan site origin {!r} does not match stack target origin {!r}".format(
-                plan_origin, stack_origin
+            # Show the full URLs, not the origins: when two installations share an origin the
+            # path is the only thing that differs, and an origin-only message would read as
+            # though the two were identical.
+            "stack target {1!r} is not inside the installation rooted at plan site {0!r}".format(
+                document.get("site"), stack.get("target")
             ),
         )
 

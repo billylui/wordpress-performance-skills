@@ -678,19 +678,48 @@ def probe_local_wordpress_urls(
     return dict(sorted(configured_urls.items()))
 
 
+def url_path_segments(value: str) -> Optional[Tuple[str, ...]]:
+    """Return a URL's path as comparable segments, or None if it cannot be parsed."""
+
+    try:
+        parsed = urllib.parse.urlsplit(value.strip())
+    except ValueError:
+        return None
+    return tuple(segment for segment in parsed.path.split("/") if segment)
+
+
 def local_checkout_matches_target(
     target: str, configured_urls: Dict[str, str]
 ) -> Tuple[bool, List[str]]:
-    """Require every discovered local URL origin to match the named target origin."""
+    """Whether a local checkout's own configured URLs identify the target being audited.
+
+    **An origin is not an installation identity.** Two separate WordPress installations commonly
+    share one origin at different paths — `https://example.com/site-a/` and
+    `https://example.com/site-b/`. Matching on scheme, host and port alone would let a checkout
+    of site A raise the confirmed access tier for an audit of site B, so the audit would believe
+    it had WP-CLI or deploy access to a site it cannot touch, and a later fix could be aimed at
+    the wrong checkout entirely.
+
+    The comparison is containment, not equality: the checkout's configured home is an
+    installation root, while `target` may be any page inside it.
+
+    Fails closed — an unparseable URL on either side is not a match.
+    """
 
     target_origin = normalized_origin(target)
-    if target_origin is None or not configured_urls:
+    target_path = url_path_segments(target)
+    if target_origin is None or target_path is None or not configured_urls:
         return False, []
 
     matched_constants: List[str] = []
     for constant_name, configured_url in sorted(configured_urls.items()):
         configured_origin = normalized_origin(configured_url)
-        if configured_origin is None or configured_origin != target_origin:
+        configured_path = url_path_segments(configured_url)
+        if configured_origin is None or configured_path is None:
+            return False, []
+        if configured_origin != target_origin:
+            return False, []
+        if target_path[: len(configured_path)] != configured_path:
             return False, []
         matched_constants.append(constant_name)
     return bool(matched_constants), matched_constants
