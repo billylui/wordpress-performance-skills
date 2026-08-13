@@ -1,7 +1,25 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
 # Handoff — a predictable report contract for audit and fix
 
-**Status:** OPEN · **Opened:** 2026-08-13 · **Owner:** maintainer
+**Status:** DONE · **Opened:** 2026-08-13 · **Owner:** maintainer
+
+**Closed by** `skills/wp-perf-audit/references/report-contract.md` (the contract),
+a rewritten `references/findings-report-template.md`, `scripts/check_report.py` with a `tools/`
+shim, and a `wp-perf-fix` step 9 that re-emits the same scorecard with a delta column.
+
+Two departures from the plan below, both deliberate:
+
+- **The checker ships inside the skill,** at `skills/wp-perf-audit/scripts/check_report.py`, with a
+  thin `tools/check_report.py` shim that loads it by path. This file specified `tools/` alone, but an
+  installed skill has no `tools/` directory, so the agent could never have run it on its own draft —
+  the same defect class as the repo-root script paths already fixed once.
+- **Ten scorecard rows, not seven.** FCP, TBT and Speed Index joined the set at the operator's
+  request, since "the metrics PageSpeed shows" was the original complaint. They carry no rating:
+  this file researched thresholds for LCP, INP and CLS only, and a rating with no table behind it is
+  an invented number wearing a word. Rating them needs its own cited table.
+
+The remaining items below — the payload-walk circuit breaker and the unreviewed audit PR — moved to
+[pre-publication.md](pre-publication.md).
 
 ## The problem, in the operator's words
 

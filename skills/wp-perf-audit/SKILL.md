@@ -51,6 +51,10 @@ echo "${SKILL_DIR:-not found}"
 If the loop finds nothing, fall back to the absolute path of the directory containing this file
 rather than guessing — and if you genuinely cannot determine it, say so instead of proceeding.
 
+Resolve the path this way rather than through a harness-provided variable such as
+`${CLAUDE_SKILL_DIR}`. Those are client extensions, not part of the Agent Skills specification, so
+they expand on one harness and stay a literal string on the next.
+
 **This skill needs a shell, `curl`, `python3` (3.9+), and outbound network access to the site
 being audited.** A sandboxed runtime without network access cannot perform this audit at all;
 say so plainly rather than reporting an unreachable site as a finding.
@@ -111,6 +115,18 @@ For Core Web Vitals (LCP, INP, CLS) you need a browser path — see also
 [references/chrome-devtools-mcp.md](references/chrome-devtools-mcp.md). If none is available,
 **report Core Web Vitals as unmeasured. Never estimate them.**
 
+Two traps here have already cost a real audit its paint numbers, and both look like an unsupported
+browser when they are not:
+
+- **A hidden or backgrounded browser pane records no paint timing at all.** The page reported
+  `document.visibilityState === "hidden"` and no `largest-contentful-paint` entry was ever emitted,
+  even though the engine listed the entry type as supported. Check `visibilityState` before
+  concluding a browser cannot measure LCP, and if it is hidden say exactly that — it is a fixable
+  setup problem, not a missing capability.
+- **A load-only pass cannot produce INP.** INP measures real interactions; without driving one there
+  is nothing to report. Say whether the blocker was the tool or the absent interaction, because they
+  have different fixes.
+
 **If the site rate-limits, pace the probe.** `--delay SECONDS` sets a minimum interval between
 requests, enforced across all workers, and `--user-agent` overrides the browser string the probe
 sends. Reach for `--delay` when repeated runs of the same URL disagree, or when a site is small
@@ -142,10 +158,31 @@ is visible to file-size analysis, and both outrank compressing an image.
 
 ### 5. Report
 
-Use [references/findings-report-template.md](references/findings-report-template.md). Two sections are
-mandatory and must never be dropped: **"What could not be checked"** and **"What did not work"**.
-A report containing only wins is a sales document, and the next person to touch the site pays for
-the omission.
+The report has a fixed shape, set by [references/report-contract.md](references/report-contract.md):
+mandatory sections in a fixed order, opening with a scorecard whose rows are always present. Fill in
+[references/findings-report-template.md](references/findings-report-template.md), which is that
+contract as a document.
+
+**This holds at the end of the audit, not just when you read it here.** By the time the report gets
+written you will be thousands of tokens past this instruction, so do not rely on remembering it —
+validate instead:
+
+```bash
+python3 "$SKILL_DIR/scripts/check_report.py" report.md
+```
+
+Treat it as a loop: draft, run the checker, fix exactly what it names, run it again, and publish only
+on a clean exit. Its messages state what a conforming report looks like, so a failure is actionable
+without re-reading the contract.
+
+Two things it enforces that are the entire point of the format:
+
+1. **A metric nobody measured says `unmeasured` with a reason, in its own row.** It never disappears,
+   and it never gets a rating. An empty labelled slot is a complete answer; a missing row is not,
+   because a reader cannot tell an unmeasured metric from a healthy one when both look like silence.
+2. **"What could not be checked" and "What did not work" are never dropped or left empty.** A report
+   containing only wins is a sales document, and the next person to touch the site pays for the
+   omission.
 
 ## Catalog
 

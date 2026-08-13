@@ -146,6 +146,30 @@ delta, and the rollback path. If the change did not move its expected metric, **
 it as a null result.** That is information, not failure, and hiding it makes the next audit repeat
 the work.
 
+Then re-emit the audit's scorecard — the same rows, in the same order — with a delta column, under
+`## Result`:
+
+| Metric | Before | After | Δ |
+|---|---|---|---|
+| LCP | 4.9 s | 2.1 s | −2.8 s |
+| INP | unmeasured | unmeasured | — |
+| TTFB (origin) | 4,461 ms | 4,402 ms | −59 ms |
+
+The rows are fixed by
+[../wp-perf-audit/references/report-contract.md](../wp-perf-audit/references/report-contract.md) —
+**reuse that contract; do not write a second one.** A row that was unmeasured before and after stays
+in the table with `—` as its delta, because "we still cannot see this" is a result an operator needs.
+The same rule as the audit applies to the after column: never estimate a number to fill a slot.
+
+Validate before publishing, the same loop the audit uses:
+
+```bash
+python3 "$SKILL_DIR/../wp-perf-audit/scripts/check_report.py" report.md
+```
+
+A fixed before/after table is what makes a null result legible. Without it, a change that moved
+nothing gets written up in whatever shape flatters it most.
+
 ## Hard gates
 
 These are refusals, not preferences.
