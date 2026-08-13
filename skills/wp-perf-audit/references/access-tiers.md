@@ -21,9 +21,9 @@ what remained outside the audit.
 
 ```mermaid
 flowchart LR
-    T0["Tier 0: public<br/>URL only"] --> T1["Tier 1: admin<br/>wp-admin or authenticated REST"]
-    T1 --> T2["Tier 2: cli<br/>WP-CLI locally or over SSH"]
-    T2 --> T3["Tier 3: code<br/>deploy path"]
+    T0["Tier 0: public — URL only"] --> T1["Tier 1: admin — wp-admin or authenticated REST"]
+    T1 --> T2["Tier 2: cli — WP-CLI locally or over SSH"]
+    T2 --> T3["Tier 3: code — deploy path"]
 ```
 The diagram moves from a public URL through progressively stronger administrative, command-line,
 and deployment access. Each tier includes the useful work below it; browser tooling is a separate
