@@ -145,17 +145,39 @@ not been reviewed or merged, and nothing in this repository changed it.
 The site and its repository are deliberately not named here. Everything this project needed from
 that engagement is generalized in [../case-study-anonymized.md](../case-study-anonymized.md).
 
-### 8. Distribution and outreach — not started, deliberately
+### 8. Distribution works; the upstream conversation is open
 
-Each of these publishes under the maintainer's identity and should not be automated:
+**Distribution needed no outreach.** Publishing was the distribution. Verified end to end after the
+repository went public:
 
-- A PR to [`WordPress/agent-skills`](https://github.com/WordPress/agent-skills) proposing this as
-  the frontend/live-site companion. The highest-authority link available in this niche, and a
-  genuine contribution — their `wp-performance` skill excludes exactly what this covers.
-- Listings on skills.sh, the agent-skill awesome-lists, lobehub, and the agentskills.io showcase.
-  Distribution and LLM-discoverability in one action.
+```bash
+npx skills add billylui/wordpress-performance-skills
+```
 
-Both should wait until the repository is public.
+installs both skills and reports *"universal: Antigravity, Codex, Cursor, Gemini CLI, Amp +12 more ·
+symlinked: Claude Code"*. The bundled scripts, references and `host-policy.json` all come across,
+and both self-tests plus the host gate ran correctly from the installed copy.
+
+**There is nothing to submit to the directories.** skills.sh ranks by anonymous install telemetry
+from the `skills` CLI, not by stars or a submission form. Installs are the ranking, which makes the
+README's first screen the lever rather than any listing.
+
+**The upstream question is asked, not assumed.**
+[WordPress/agent-skills#90](https://github.com/WordPress/agent-skills/issues/90) — an issue, not a
+PR, following their CONTRIBUTING's own suggestion to discuss scope first. It asks whether frontend
+performance is in scope for them at all and offers three answers including "nothing, keep it
+separate".
+
+A PR was deliberately **not** sent, for three reasons worth keeping if this is revisited:
+
+- Their CONTRIBUTING says to check existing skills to avoid overlap, and `wp-performance` exists.
+- A contributed copy would create a second host-policy table, maintained without this repository's
+  drift check. A stale permissive claim about a host's policy is the most damaging error either
+  project could ship.
+- Five new-skill PRs opened on 2026-06-04 were still open two months later.
+
+**Still not started, and still the maintainer's to trigger:** anything that publishes under their
+identity — WordPress community posts, write-ups, or a listing that does require submission.
 
 ## Notes for whoever picks this up
 

@@ -168,6 +168,17 @@ specification. Almost every entry is a defect that only appeared under real use.
 
 ### Fixed
 
+- **The Mermaid diagrams rendered as run-together text on GitHub.** Every multi-line node label
+  used `<br/>`, which only breaks a line where the renderer has `htmlLabels` enabled; GitHub
+  sanitises Mermaid labels, so the tag was stripped and "Fingerprint" ran into "what stack is
+  this?". Sixteen labels across four diagrams no longer depend on HTML at all — each is a single
+  line, which renders the same on GitHub, in an editor preview and in any static generator.
+- **The README claimed each skill directory was self-contained. It was not.** `wp-perf-fix` reaches
+  into the audit skill in four places — `perf-probe.py` to measure before and after, and
+  `check_report.py` plus the report contract to write the result. Both installers place the two as
+  siblings so behaviour was always correct, but anyone following that sentence for a manual install
+  would have ended up with a fix skill that could not measure or report.
+
 - GoDaddy Managed WordPress is detected from its `x-gateway-*` headers; it previously reported
   `unknown`, which routed a real managed host to the most restrictive constraint lane.
 - `theme_type` no longer claims `block` from `global-styles-inline-css` alone — WordPress emits

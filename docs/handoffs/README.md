@@ -7,5 +7,4 @@ Open work carried across sessions. One file per topic. Close an item by flipping
 | Handoff | Status | Summary |
 |---|---|---|
 | [pre-launch-audit.md](pre-launch-audit.md) | MOSTLY DONE | What a claim audit found before going public. Every P1 is closed; one lower-severity item remains — campaign numbers with no artifact in the repository to check them against |
-| [host-policy-gate.md](host-policy-gate.md) | DONE | Scope for making the documented hard gates real. The host gate now reads the host constraints, staging is a capability rather than a precondition, and the queue reading is settled |
-| [pre-publication.md](pre-publication.md) | OPEN | What remains before making the repository public, and what is deliberately deferred past v0.1 |
+| [pre-publication.md](pre-publication.md) | OPEN | What is still unexercised now the repository is public — chiefly that `wp-perf-fix` has never run against a production host — and what is deliberately deferred past v0.1 |
