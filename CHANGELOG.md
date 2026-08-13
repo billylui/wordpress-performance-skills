@@ -55,6 +55,20 @@ specification. Almost every entry is a defect that only appeared under real use.
   still have passed. Four cases now assert it, including that `fingerprint.py` and
   `perf-probe.py` send the *same* string — on a bot-protected site, disagreement makes the two
   scripts describe different pages.
+- **The host-constraint gate now reads the host's constraints.** `validate_plan.py` previously
+  refused a change whose `risk_lane` the plan had *already labelled* `prohibited` — and the agent
+  wrote that label — so a plan declaring `host_class: wpengine` while activating WP Rocket, a page
+  cache WP Engine's own disallowed list forbids, passed with zero problems. The page-cache verdict
+  for all 17 host classes now comes from `references/host-policy.json`, transcribed from
+  `host-constraints.md` with its first-party citation, and is computed from `host_class` plus the
+  change's own target. A plan cannot assert its way past it. An unmapped host is refused rather
+  than exempt, and a missing policy file stops the run instead of waving it through.
+- `host_confirmation` on a change carries **evidence, never a verdict** — a `source` a human could
+  check and a `scope` saying what was confirmed. It unblocks a host whose policy is merely
+  *unconfirmed*, which is most of them and without which the gate would block legitimate work on
+  real sites. It can never override a published prohibition.
+- `tools/check_host_policy.py` fails the build if the policy table and its human document drift,
+  if a host is missing from either, or if a permissive verdict cites nothing.
 - Code of conduct, issue templates, and a pull-request template.
 
 ### Verified

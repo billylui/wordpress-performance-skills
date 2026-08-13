@@ -163,6 +163,13 @@ MINIMUM_RISK_LANE_BY_TARGET_KIND: Mapping[str, str] = {
     "theme-file": "staging-first",
     "wp-option": "direct",
 }
+# The machine-readable half of host-constraints.md, loaded from the skill's own references/ so an
+# installed copy carries it. tools/check_host_policy.py fails the build if the two ever disagree.
+HOST_POLICY_FILENAME = "host-policy.json"
+# A page-cache verdict only applies to a change that targets a plugin. Other kinds are not yet
+# encoded, and silently gating them on a page-cache table would refuse unrelated work.
+PAGE_CACHE_TARGET_KINDS = ("plugin-setting", "plugin-file")
+
 # Numeric ranks make minimum-lane comparisons explicit; prohibited is handled
 # as an unconditional refusal and therefore intentionally has no rank.
 RISK_LANE_RANK: Mapping[str, int] = {
@@ -698,6 +705,142 @@ def validate_risk_lane(
         )
 
 
+def load_host_policy() -> Mapping[str, Any]:
+    """Load the machine-readable host policy, or refuse the run.
+
+    A missing or malformed policy file is not "no policy, so no problem" — it is the gate being
+    absent, and this validator has already shipped one fail-open class. `ValidationInputError`
+    exits with the unreadable code rather than letting a plan through unchecked.
+    """
+
+    path = Path(__file__).resolve().parent.parent / "references" / HOST_POLICY_FILENAME
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise ValidationInputError(
+            "host policy {} is missing; the host-constraint gate cannot run and no plan can be "
+            "validated without it".format(path.as_posix())
+        )
+    except (OSError, ValueError) as exc:
+        raise ValidationInputError(
+            "host policy {} could not be read: {}".format(path.as_posix(), exc)
+        )
+    hosts = document.get("hosts")
+    plugins = document.get("page_cache_plugins")
+    if not isinstance(hosts, dict) or not isinstance(plugins, list):
+        raise ValidationInputError(
+            "host policy {} is malformed: it needs a 'hosts' object and a 'page_cache_plugins' "
+            "list".format(path.as_posix())
+        )
+    return document
+
+
+def validate_host_policy(
+    change: Mapping[str, Any],
+    change_id: str,
+    plan_host_class: Any,
+    policy: Optional[Mapping[str, Any]],
+    problems: List[Problem],
+) -> None:
+    """Refuse a page-cache change the host's published policy forbids.
+
+    Until this existed, the gate the whole skill advertises was a label check: a change was refused
+    only when the PLAN had already marked its risk_lane `prohibited`, and the agent wrote that
+    label. A plan declaring host_class `wpengine` while activating WP Rocket — a page cache WP
+    Engine's own disallowed list forbids — passed with zero problems.
+
+    The verdict is computed from the policy table and the change's own target. Nothing in the plan
+    can assert it, for the same reason `approval.required: false` is refused rather than obeyed.
+
+    Scope: this covers a target whose identifier is a recognized page-cache plugin. A cache shipped
+    under an unrecognized slug is not gated here, which the policy file records as a known limit.
+    """
+
+    if policy is None:
+        return
+    target = change.get("target")
+    if not isinstance(target, dict):
+        return
+    kind = target.get("kind")
+    identifier = target.get("identifier")
+    if kind not in PAGE_CACHE_TARGET_KINDS or not isinstance(identifier, str):
+        return
+    slug = identifier.strip().lower()
+    if slug not in {str(name).lower() for name in policy.get("page_cache_plugins", [])}:
+        return
+
+    hosts = policy.get("hosts", {})
+    entry = hosts.get(plan_host_class) if isinstance(plan_host_class, str) else None
+    if not isinstance(entry, dict):
+        # An unmapped host is the restrictive lane, not an exemption.
+        add_problem(
+            problems,
+            change_id,
+            "host_policy",
+            "host_class {!r} has no entry in {}, so its page-cache policy is unknown and the "
+            "change is refused. Identify the provider, add its verdict with a first-party "
+            "citation, or supply host_confirmation.".format(plan_host_class, HOST_POLICY_FILENAME),
+        )
+        return
+
+    verdict = entry.get("page_cache")
+    permitted = {str(name).lower() for name in entry.get("permitted_plugins", [])}
+    reason = str(entry.get("reason", "")).strip()
+    citations = [str(url) for url in entry.get("citations", []) if str(url).strip()]
+    cite = " Cited: {}".format(", ".join(citations)) if citations else ""
+
+    if verdict == "prohibited":
+        add_problem(
+            problems,
+            change_id,
+            "host_policy",
+            "host {!r} prohibits page-cache plugin changes, so {!r} is refused. {}{} Operator "
+            "confirmation cannot override a published prohibition; propose the host's own caching "
+            "controls instead.".format(plan_host_class, slug, reason, cite),
+        )
+        return
+
+    if verdict == "permitted-only" and slug in permitted:
+        return
+
+    confirmation = change.get("host_confirmation")
+    if is_valid_host_confirmation(confirmation):
+        return
+
+    if verdict == "permitted-only":
+        detail = "host {!r} permits only {} as a page cache".format(
+            plan_host_class, ", ".join(sorted(permitted)) or "no named plugin"
+        )
+    elif verdict == "permitted-with-conditions":
+        detail = "host {!r} permits a page cache only under stated conditions".format(
+            plan_host_class
+        )
+    else:
+        detail = "host {!r} has no first-party documentation settling this".format(plan_host_class)
+
+    add_problem(
+        problems,
+        change_id,
+        "host_policy",
+        "{}, so {!r} is prohibited until confirmed. {}{} To proceed, obtain confirmation for the "
+        "exact product and plugin and record it as host_confirmation with a non-empty 'source' "
+        "naming the documentation or support response, and a 'scope' saying what was "
+        "confirmed.".format(detail, slug, reason, cite),
+    )
+
+
+def is_valid_host_confirmation(value: Any) -> bool:
+    """Accept only a confirmation a human could go and check.
+
+    The field carries EVIDENCE, never a verdict. A plan that could state its own verdict would be
+    the fail-open shape this validator already shipped once, in a more dangerous place.
+    """
+
+    if not isinstance(value, dict):
+        return False
+    return all(is_non_empty_string(value.get(key)) for key in ("source", "scope"))
+
+
 def validate_change(
     change: Any,
     index: int,
@@ -708,6 +851,8 @@ def validate_change(
     plan_reports_cache: bool,
     execution_readiness: bool,
     problems: List[Problem],
+    plan_host_class: Any = None,
+    host_policy: Optional[Mapping[str, Any]] = None,
 ) -> Optional[str]:
     if not isinstance(change, dict):
         change_id = "changes[{}]".format(index)
@@ -765,6 +910,8 @@ def validate_change(
     )
 
     validate_risk_lane(change, change_id, problems)
+
+    validate_host_policy(change, change_id, plan_host_class, host_policy, problems)
 
     validate_snapshot(
         change,
@@ -1151,6 +1298,9 @@ def validate_plan(
     """Apply every safety rule and return all problems without short-circuiting."""
 
     problems: List[Problem] = []
+    # Loaded once per run. A missing or malformed policy raises rather than degrading to "no
+    # policy, no problem" — an absent gate must stop the run, not wave it through.
+    host_policy = load_host_policy()
     if not isinstance(document, dict):
         add_problem(
             problems,
@@ -1242,6 +1392,8 @@ def validate_plan(
                 plan_reports_cache,
                 not preflight,
                 problems,
+                document.get("host_class"),
+                host_policy,
             )
             if usable_id is None:
                 continue
