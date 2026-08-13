@@ -159,7 +159,10 @@ measured.
 
 ### Host constraints
 
-No host-specific restriction applies.
+No host prohibits this fix class itself. The host's normal constraints on the change mechanism
+still apply — see `wp-perf-fix/references/host-constraints.md` before editing theme files,
+builder templates or plugin settings, because the deploy path that owns production varies by
+host and a later platform push can revert a direct edit.
 
 If the change is delivered through a caching or script-optimization plugin, first check the identified
 `host_class` policy and the existing `page-plugin` layer. The mechanism does not require installing a

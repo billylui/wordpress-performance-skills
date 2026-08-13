@@ -108,8 +108,20 @@ would *disprove* the attribution.
 | Kinsta | ... | ... |
 | Server-level cache only | ... | ... |
 
-If no host prohibits anything here, write "No host-specific restriction applies." — do not
+If no host prohibits this defect class specifically, write **"No host prohibits this fix class
+itself. The host's normal constraints on the change mechanism still apply — see
+`wp-perf-fix/references/host-constraints.md` before editing files or plugin settings."** — do not
 delete the section, because its absence reads as "not checked".
+
+**Do not write a bare "No host-specific restriction applies."** It is almost never true. The defect
+class may be host-neutral, but the *mechanism* never is: a WP Engine GitPush reverts direct edits to
+tracked files, Pantheon's Test and Live code is read-only, and several platforms own
+`advanced-cache.php` and `object-cache.php` outright. An operator reading a blanket permission is
+being told the gate does not apply to them.
+
+**Any permissive statement about a named host needs a first-party citation**, or it must be phrased
+as a condition to confirm. An incorrect permissive claim about a host's policy is the most damaging
+error this project can make, because several managed hosts enforce by removing the plugin.
 
 ### Risk
 What this can break, and who notices first.

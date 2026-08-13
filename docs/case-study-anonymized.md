@@ -73,7 +73,7 @@ it weighed.
 Origin TTFB ran 1.0–1.4 s while edge-cached visitors saw ~0.2 s. Those are two different problems
 with two different fixes, and a single averaged number would have hidden which one the site had.
 Every measurement separated them, using a unique cache-buster per request so origin samples were
-genuine misses. That separation is now `perf-probe.py`.
+bypassed the query-varying caches. That separation is now `perf-probe.py` — which reports what the answering layer said rather than asserting a cache miss.
 
 **A baseline was captured before anything changed**, and re-measured after every phase, warm.
 
