@@ -124,7 +124,7 @@ Produced by `fingerprint.py`. Consumed by both skills to decide which catalog se
     "php_version":   { "value": "unknown",          "confidence": "none",   "evidence": [] },
     "host_class":    { "value": "wpengine",         "confidence": "high",   "evidence": ["..."] },
     "cdn":           { "value": "cloudflare",       "confidence": "high",   "evidence": ["..."] },
-    "multilingual":  { "value": "none",             "confidence": "medium", "evidence": ["..."] },
+    "multilingual":  { "value": "unknown",          "confidence": "none",   "evidence": ["..."] },
     "woocommerce":   { "value": "unknown",          "confidence": "none",   "evidence": ["..."] },
     "multisite":     { "value": "unknown",          "confidence": "none",   "evidence": [] }
   },
@@ -209,8 +209,11 @@ Produced by `perf-probe.py`. The before/after comparison document.
 Rules:
 
 - **`origin_ttfb_ms` and `edge_ttfb_ms` are never merged.** Origin is measured with a unique
-  cache-buster per request so every hit is a genuine miss; edge is the bare URL as a visitor
-  gets it. A blended number hides which problem the site has. This separation is the reason
+  cache-buster per request, which defeats any cache keyed on the query string; edge is the bare
+  URL as a visitor gets it. **The buster proves the query-varying layers were bypassed, not that
+  PHP executed** — an inner page or object cache that ignores the query string can still serve it.
+  `cache_status` carries what the answering layer actually reported, and is the evidence for how
+  the request was served. A blended number hides which problem the site has. This separation is the reason
   this script exists.
 - Reported TTFB is the **median** of `repeats` samples; the raw samples ship alongside so an
   outlier is visible rather than averaged away.

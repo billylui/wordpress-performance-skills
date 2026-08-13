@@ -147,7 +147,7 @@ after each toggle individually.
 
 | Host class | Permitted | Path |
 |---|---|---|
-| `wpengine` | Theme or builder enqueue changes are permitted through the site's normal deployment path; do not introduce a page-caching plugin for this fix | Use source conditions or existing builder controls. Confirm platform policy before changing the `page-plugin` cache layer. |
+| `wpengine` | Theme or builder enqueue changes go through the site's authoritative deployment path — confirm which path owns production, because a later GitPush reverts direct edits to tracked files; do not introduce a page-caching plugin for this fix | Use source conditions or existing builder controls. Confirm platform policy before changing the `page-plugin` cache layer. |
 | `unknown` | Unknown until the host is identified | Make only the scoped theme/builder change; check host policy before adding or replacing any caching plugin. |
 | `other` | Scoped theme/builder changes are normally independent of hosting | Use the existing deployment and cache-purge path. A new caching plugin is not required for this mechanism. |
 

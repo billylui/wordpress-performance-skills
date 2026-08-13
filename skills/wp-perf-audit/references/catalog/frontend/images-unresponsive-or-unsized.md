@@ -153,7 +153,10 @@ call the same choke point.
 
 ### Host constraints
 
-No host-specific restriction applies.
+No host prohibits this fix class itself. The host's normal constraints on the change mechanism
+still apply — see `wp-perf-fix/references/host-constraints.md` before editing theme files,
+builder templates or plugin settings, because the deploy path that owns production varies by
+host and a later platform push can revert a direct edit.
 
 If a `cdn` such as `cloudflare`, `cloudflare-apo`, `bunny`, `fastly`, `akamai`, or
 `aws-cloudfront` rewrites images, purge its `edge` cache as well as active `server` and
