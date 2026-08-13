@@ -86,22 +86,22 @@ strong the format-level evidence is.
 **Fix:** install on one other agent and run a tier-0 audit. Roughly ten minutes, and it converts
 the strongest remaining assumption into evidence.
 
-### 6. No escaped-bug taxonomy, because there is no test contract to hold it
+### 6. The escaped-bug taxonomy exists; the release contract is not yet exercised
 
-**Problem:** a real audit run surfaced several defects that unit tests had not — the change-plan
-validator failing open three ways, the host-class deadlock, a bot User-Agent liable to measure a
-challenge page, a payload walk that could not finish, script paths that assumed the repo root.
-Every one has a **regression lock** (an adversarial case or a CI check), but there is no
-`docs/TESTING.md` to record *which class of check would have caught it first*, so the same shapes
-can recur without anything noticing.
+`docs/TESTING.md` now holds the release contract and a backfilled taxonomy — one row per defect that
+reached a real run without a test catching it first, each naming its **miss-class** rather than the
+bug, so it predicts the next one instead of only recording the last.
 
-**Why it matters:** the locks stop each specific bug returning. The taxonomy is what turns a
-one-off fix into coverage — it names the missing check, not the missing line.
+Writing it did what a taxonomy is for: it found that the bot-User-Agent fix had shipped with **no
+regression lock at all**. Nothing asserted the default was a browser string, so a refactor could have
+reverted it and every check would still have passed. That gap is now closed.
 
-**Fix:** scaffold `docs/TESTING.md` from the release-gate template and backfill a row per defect:
-ID, date, bug, miss-class, what would have caught it, lock file. Deliberately **not** improvised
-during this wrap — a partial gate that looks complete is worse than none, and release-gate owns
-that contract's shape.
+**What remains:** the contract has never been *run* as a gate. No `docs/walkthroughs/<gate-id>.md`
+report exists, and the two rows that cannot be automated — the per-host policy citations, WP-CAT-01
+and WP-HOST-01 — have therefore never been exercised as a checklist row rather than as review habit.
+
+**Fix:** run `/release-gate` once against `docs/TESTING.md` and keep the report, so the first real
+use is not also the first release that depends on it.
 
 ### 7. The `sspe-website` audit PR #67 is open and unreviewed
 
