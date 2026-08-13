@@ -444,6 +444,64 @@ def main() -> int:
     expect_exit("unreachable host is still exit 3, not 4",
                 [PROBE, "--site", "https://nope-xyz-nores.invalid", "--quick", "--repeats", "1", "--quiet"], 3)
 
+    print("\n=== fingerprint.py — absence of evidence must not become a negative claim ===")
+    fingerprint_mod = load_module("fingerprint", FINGERPRINT)
+    # The repo calls "`unknown` is a first-class value; never guess" the single most important rule
+    # it has, and the fingerprint broke it in one direction: finding no marker produced
+    # `woocommerce: false`, `multilingual: none`, `is_wordpress: false` at medium confidence. The
+    # WooCommerce case has a documented harm path — this project's own catalog says a false result
+    # "does not prove that no store exists" and warns that brochure-site caching advice on a store
+    # can expose private cart or order state. Taxonomy row WP-ESC-08.
+    def fingerprint_signals(html: str):
+        pages = [fingerprint_mod.FetchedPage(
+            requested_url="https://e.invalid/", final_url="https://e.invalid/", status=200,
+            headers={}, cookies=[], html=html, truncated=False, error="", redirect_notes=[])] * 3
+        parsers = []
+        for page in pages:
+            parser = fingerprint_mod.PageParser()
+            parser.feed(page.html)
+            parsers.append(parser)
+        wordpress, _version = fingerprint_mod.detect_wordpress(pages, parsers)
+        multilingual, _notes = fingerprint_mod.detect_multilingual(pages, parsers, [])
+        return {
+            "is_wordpress": wordpress,
+            "multilingual": multilingual,
+            "woocommerce": fingerprint_mod.detect_woocommerce(pages, parsers),
+        }
+
+    # CONTROL FIRST: with markers present these must still be definite, or a fingerprint that
+    # answered "unknown" to everything would pass every case below while detecting nothing.
+    present = fingerprint_signals(
+        '<html><body class="woocommerce">'
+        '<a href="/wp-content/plugins/woocommerce/x.js"></a>'
+        '<link href="/wp-content/plugins/sitepress-multilingual-cms/y.css">'
+        '<script src="/wp-includes/js/z.js"></script></body></html>'
+    )
+    record(present["is_wordpress"]["value"] is True,
+           "CONTROL: real WordPress markers still yield a definite true",
+           f"got {present['is_wordpress']['value']!r}")
+    record(present["woocommerce"]["value"] is True,
+           "CONTROL: real WooCommerce markers still yield a definite true",
+           f"got {present['woocommerce']['value']!r}")
+    record(present["multilingual"]["value"] == "wpml",
+           "CONTROL: a real multilingual product is still named",
+           f"got {present['multilingual']['value']!r}")
+
+    absent = fingerprint_signals("<html><body><p>nothing identifying here</p></body></html>")
+    for field in ("is_wordpress", "woocommerce", "multilingual"):
+        signal = absent[field]
+        record(signal["value"] == "unknown",
+               f"no marker yields unknown, not a negative claim: {field}",
+               f"got {signal['value']!r} @ {signal['confidence']!r}")
+    record(absent["woocommerce"]["confidence"] == "none",
+           "an unknown carries confidence 'none', per the signal contract",
+           f"got {absent['woocommerce']['confidence']!r}")
+    # The observation itself must survive — "we looked and saw none" is useful; concluding false
+    # from it is not. An unknown with no evidence would hide that the check ran at all.
+    record(bool(absent["woocommerce"]["evidence"]),
+           "the absence observation is still reported as evidence",
+           f"evidence entries: {len(absent['woocommerce']['evidence'])}")
+
     print("\n=== the probe must not identify as a bot and measure a challenge page ===")
     # An escaped defect with no lock until now: an honest bot User-Agent is the intuitive choice
     # and was the original one, but security plugins, host WAFs and CDN bot rules answer it with a
@@ -452,7 +510,6 @@ def main() -> int:
     #
     # Nothing asserted this, so a refactor could have reverted the default and every test would
     # still have passed. Taxonomy row PERF-04 in docs/TESTING.md.
-    fingerprint_mod = load_module("fingerprint", FINGERPRINT)
     record(probe.DEFAULT_USER_AGENT.startswith("Mozilla/5.0"),
            "perf-probe's default User-Agent is a browser string",
            f"starts {probe.DEFAULT_USER_AGENT[:24]!r}")

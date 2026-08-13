@@ -228,6 +228,8 @@ The exact product strings are `/plugins/sitepress-multilingual-cms/`, `wpml-`, o
 `multilingualpress`. The evidence prefix says whether the match came from HTML or a cookie.
 
 `woocommerce` is `true` when WooCommerce class tokens, its vendor-namespaced plugin asset path, or
+
+**A missing marker is reported as `unknown`, never as `false` or `none`.** That applies to `is_wordpress`, `woocommerce` and `multilingual` alike. A public crawl of a few pages can miss a shop, a translated path, or a site whose markers an optimizer has stripped, so absence of evidence is recorded as exactly that. The evidence string still says what was searched for and across how many pages — treat it as a prompt to confirm at a higher tier, not as a negative finding you can act on.
 a `wc-ajax` endpoint reference appears. The asset path supports `high`; other public markers support
 `medium`. No marker yields `false` at `low` or `medium` according to page coverage.
 
