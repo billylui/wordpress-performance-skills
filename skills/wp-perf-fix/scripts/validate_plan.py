@@ -728,6 +728,7 @@ def validate_staging(
     change: Mapping[str, Any],
     change_id: str,
     plan_staging: Any,
+    document_site: Any,
     problems: List[Problem],
 ) -> None:
     """Require staging OR stated compensating controls for a code change — never neither.
@@ -751,6 +752,31 @@ def validate_staging(
 
     declared = isinstance(plan_staging, dict) and is_non_empty_string(plan_staging.get("url"))
     if declared:
+        staging_url = str(plan_staging.get("url"))
+        # A staging declaration that is not a usable absolute URL, or that names the production
+        # site itself, would let "staging-first" run straight against production while looking
+        # satisfied. The same canonical comparison that binds a fingerprint to a plan is reused,
+        # so `https://example.com` and `https://example.com/` are recognised as the same site.
+        if normalized_origin(staging_url) is None:
+            add_problem(
+                problems,
+                change_id,
+                "staging",
+                "staging.url {!r} is not an absolute http(s) URL, so nothing was really declared. "
+                "Give the staging site's address, or omit staging and state compensating "
+                "controls instead.".format(staging_url),
+            )
+            return
+        if identifies_same_installation(document_site, staging_url) is True:
+            add_problem(
+                problems,
+                change_id,
+                "staging",
+                "staging.url is the production site ({!r}). A staging-first change would then run "
+                "directly against production while appearing staged, which is the outcome the lane "
+                "exists to prevent.".format(staging_url),
+            )
+            return
         if not is_non_empty_string(plan_staging.get("confirmed_by")):
             add_problem(
                 problems,
@@ -859,9 +885,10 @@ def validate_host_policy(
     identifier = target.get("identifier")
     if kind not in PAGE_CACHE_TARGET_KINDS or not isinstance(identifier, str):
         return
-    slug = identifier.strip().lower()
-    if slug not in {str(name).lower() for name in policy.get("page_cache_plugins", [])}:
+    known = {str(name).lower() for name in policy.get("page_cache_plugins", [])}
+    if not page_cache_slug(identifier, known):
         return
+    slug = page_cache_slug(identifier, known)
 
     hosts = policy.get("hosts", {})
     entry = hosts.get(plan_host_class) if isinstance(plan_host_class, str) else None
@@ -923,6 +950,32 @@ def validate_host_policy(
     )
 
 
+def page_cache_slug(identifier: str, known: Set[str]) -> Optional[str]:
+    """Map a change target's identifier onto a known page-cache plugin, or None.
+
+    An exact-membership test was too narrow, and narrow here means the gate is bypassed by the
+    MOST ordinary way of naming a plugin. WordPress identifies a plugin by its basename —
+    `wp-rocket/wp-rocket.php` is what `active_plugins` stores and what `wp plugin activate` takes —
+    and a settings target reads `wp_rocket_settings[minify_css]`. Both named WP Rocket, and both
+    sailed past a gate that only recognised the bare slug.
+
+    Matching is deliberately biased toward refusing. A plugin merely sharing a prefix with a known
+    cache is refused and needs a `host_confirmation`, which costs one round-trip; permitting a
+    banned cache costs a plugin being removed from a live site by the host.
+    """
+
+    text = identifier.strip().lower().replace("_", "-")
+    if not text:
+        return None
+    # `slug/file.php` — the canonical plugin basename — identifies the plugin by its directory.
+    candidates = {text, text.split("/", 1)[0]}
+    for candidate in sorted(candidates):
+        for slug in sorted(known):
+            if candidate == slug or candidate.startswith(slug + "-"):
+                return slug
+    return None
+
+
 def is_valid_host_confirmation(value: Any) -> bool:
     """Accept only a confirmation a human could go and check.
 
@@ -948,6 +1001,7 @@ def validate_change(
     plan_host_class: Any = None,
     host_policy: Optional[Mapping[str, Any]] = None,
     plan_staging: Any = None,
+    plan_site: Any = None,
 ) -> Optional[str]:
     if not isinstance(change, dict):
         change_id = "changes[{}]".format(index)
@@ -1008,7 +1062,7 @@ def validate_change(
 
     validate_host_policy(change, change_id, plan_host_class, host_policy, problems)
 
-    validate_staging(change, change_id, plan_staging, problems)
+    validate_staging(change, change_id, plan_staging, plan_site, problems)
 
     validate_snapshot(
         change,
@@ -1492,6 +1546,7 @@ def validate_plan(
                 document.get("host_class"),
                 host_policy,
                 document.get("staging"),
+                document.get("site"),
             )
             if usable_id is None:
                 continue

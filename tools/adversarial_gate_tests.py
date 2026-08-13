@@ -307,6 +307,18 @@ def main() -> int:
                     [VALIDATE, code_plan(staging={"url": "https://staging.example.com"},
                                          change={"compensating_controls": None}),
                      "--preflight", "--quiet"], 1)
+        # A declaration that is not a usable URL, or that names production, would let a
+        # "staging-first" change run straight against production while appearing satisfied.
+        expect_exit("staging.url that is the production site is refused",
+                    [VALIDATE, code_plan(staging={"url": "https://example.com",
+                                                  "confirmed_by": "panel"},
+                                         change={"compensating_controls": None}),
+                     "--preflight", "--quiet"], 1)
+        expect_exit("staging.url that is not a URL at all is refused",
+                    [VALIDATE, code_plan(staging={"url": "yes we have staging",
+                                                  "confirmed_by": "panel"},
+                                         change={"compensating_controls": None}),
+                     "--preflight", "--quiet"], 1)
         expect_exit("partially stated controls are not controls",
                     [VALIDATE, code_plan(change={"compensating_controls": {"mechanism": "careful"}}),
                      "--preflight", "--quiet"], 1)
@@ -361,6 +373,15 @@ def main() -> int:
 
         expect_exit("a page cache on wpengine is refused (first-party disallowed list)",
                     [VALIDATE, cache_plan("wpengine", "wp-rocket"), "--preflight", "--quiet"], 1)
+        # The bare slug was the ONLY form the gate recognised at first, and it is the least likely
+        # one to appear: WordPress identifies a plugin by its basename, and a settings target names
+        # an option. Both bypassed the gate entirely.
+        for identifier in ("wp-rocket/wp-rocket.php", "wp_rocket_settings[minify_css]", "WP-Rocket"):
+            expect_exit(f"…and so is the same plugin written as {identifier!r}",
+                        [VALIDATE, cache_plan("wpengine", identifier), "--preflight", "--quiet"], 1)
+        expect_exit("CONTROL: an unrelated plugin basename is still not gated",
+                    [VALIDATE, cache_plan("wpengine", "contact-form-7/wp-contact-form-7.php"),
+                     "--preflight", "--quiet"], 0)
         expect_exit("a page cache on kinsta is refused (banned list)",
                     [VALIDATE, cache_plan("kinsta", "wp-rocket"), "--preflight", "--quiet"], 1)
         expect_exit("a page cache siteground does not document is refused",
@@ -614,6 +635,37 @@ def main() -> int:
     # third-party endpoint (undeclared egress) or a fixture that must hang for a full timeout.
     probe.BREAKER.reset()
     dead, alive = "dead.invalid", "alive.invalid"
+
+    # Discovery runs BEFORE sizing and is serial, so gating only the sizing pool left the exact
+    # path that caused the motivating stall — font CSS on a host that resolved and never answered —
+    # paying a full timeout per stylesheet. Driven against the real discovery function with curl
+    # stubbed, because reproducing it needs a host that accepts and never replies.
+    real_run_curl = probe.run_curl
+    try:
+        def stub(_binary, args):
+            url = args[-1]
+            if dead in url:
+                return {"returncode": probe.CURL_TIMEOUT_CODE, "stdout": b"",
+                        "error": "timed out", "unreachable": True}
+            return {"returncode": 0, "stdout": b"HTTP/1.1 200 OK\r\n\r\n",
+                    "error": "", "unreachable": False}
+        probe.run_curl = stub
+        probe.BREAKER.reset()
+        links = "".join(f'<link rel="stylesheet" href="https://{dead}/f{i}.css">' for i in range(10))
+        _res, errs, incomplete = probe.discover_resources(
+            "/curl", "https://live.invalid/", f"<html><head>{links}</head></html>")
+        # Named distinctly: `skipped` is the module-level list of SKIPPED CASES, and shadowing it
+        # here broke the suite's own summary line.
+        css_skipped = sum(1 for e in errs if "stopped answering" in e)
+        record(css_skipped >= 6,
+               "the breaker also covers stylesheet DISCOVERY, not just sizing",
+               f"{css_skipped} of 10 stylesheets skipped after the circuit opened")
+        record(incomplete is True,
+               "a discovery cut short by the breaker is reported incomplete, not complete",
+               f"discovery_incomplete={incomplete}")
+    finally:
+        probe.run_curl = real_run_curl
+        probe.BREAKER.reset()
 
     # Positive control: a host under the limit stays in service. Without this, every negative
     # case below would also pass against a breaker that simply refused everything.

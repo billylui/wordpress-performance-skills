@@ -111,6 +111,15 @@ specification. Almost every entry is a defect that only appeared under real use.
   performance work has real dependencies — but they execute strictly one at a time, and a plan with
   more than one now states `sequence_rationale`. Previously a two-change plan passed with no
   ordering stated at all, and the documents supported two different readings of what that meant.
+- **Four gates that could be bypassed, or were never enforced.** An independent review of the
+  whole session found them; each was reproduced before being fixed. The host-policy gate matched
+  only a bare plugin slug, so `wp-rocket/wp-rocket.php` — the identifier WordPress itself stores in
+  `active_plugins` — passed straight through it on a host that bans page caches. `staging.url`
+  accepted any non-empty string, including the production URL, which would let a "staging-first"
+  change run against production while appearing staged. The circuit breaker never covered
+  stylesheet **discovery**, which is serial and runs before sizing — the exact path that caused the
+  stall it was built for. And the adversarial suite had **never run in CI**, while `docs/TESTING.md`
+  declared it an always-on row: every lock in it was unenforced.
 - Code of conduct, issue templates, and a pull-request template.
 
 ### Verified
