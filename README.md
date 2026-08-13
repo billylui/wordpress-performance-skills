@@ -6,6 +6,28 @@
 Point an AI coding agent at a WordPress URL and get a ranked, evidence-backed performance audit.
 Give it more access and it can fix what it found, safely, with a rollback for every change.
 
+## Why this one
+
+**It knows which hosts will delete your cache plugin.** Ask most tools why a WordPress site is
+slow and sooner or later they suggest installing WP Rocket. On WP Engine, Kinsta, Pressable,
+Flywheel, Bluehost and WordPress.com that advice is worse than useless — those hosts publish
+disallowed-plugin lists and *remove* the plugin from your site. This one refuses the change,
+against a table of all 17 host classes with a first-party citation per verdict, and routes you to
+the host's own caching controls instead. A plan cannot talk its way past it.
+
+**An unmeasured metric says so, with a reason.** Every report opens with the same ten rows — LCP,
+INP, CLS, FCP, TBT, Speed Index, TTFB origin and edge, page weight, requests. When the session has
+no browser, those rows read `unmeasured — no browser-capable tool in this session`, not silence and
+never a guess. A reader can always tell "this is fine" from "nobody looked". A bundled checker
+refuses a draft that breaks the format, so it holds even at the end of a long run.
+
+**It separates origin from edge, and says which layer owns your problem.** A cached site with a
+slow origin and a slow site are different problems with different fixes; a single blended number
+hides which one you have.
+
+**It says what it could not check.** Every report has a mandatory "What could not be checked" and
+"What did not work" section. A report containing only wins is a sales document.
+
 > **Status: v0.1, usable but young.** Both skills, the 20-entry defect catalog, the measurement
 > scripts and the evaluation harness are in place. It has been exercised against live sites but
 > not yet across the full stack matrix, so expect rough edges on stacks nobody has pointed it at.
@@ -54,7 +76,10 @@ skills — `.claude/skills/` for a Claude Code project, `.agents/skills/` for th
 convention, `~/.claude/skills/` or the equivalent for a global install. Paths differ per agent,
 which is exactly what the `skills` CLI exists to handle.
 
-Each skill directory is self-contained: nothing it needs at runtime lives outside it.
+**Install both.** `wp-perf-audit` is self-contained, but `wp-perf-fix` uses the audit skill's
+`perf-probe.py` to measure before and after, and its `check_report.py` and report contract to write
+the result — so it expects `wp-perf-audit` beside it. The `skills` CLI and the plugin install both
+place them as siblings; a manual install should too.
 
 ### Requirements
 
