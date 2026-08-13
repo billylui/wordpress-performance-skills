@@ -320,6 +320,12 @@ class HostCircuitBreaker:
         with self._lock:
             if not timed_out:
                 self._consecutive_timeouts[host] = 0
+                # An answered request closes the circuit as well as resetting the count. The
+                # sizing pool runs several requests at once, so three can time out and open the
+                # circuit while a fourth to the same host is still in flight — and that fourth
+                # then answers. Leaving the circuit open there would keep skipping a host we have
+                # just watched respond, and understate the payload for the rest of the run.
+                self._open_hosts.discard(host)
                 return
             count = self._consecutive_timeouts.get(host, 0) + 1
             self._consecutive_timeouts[host] = count
