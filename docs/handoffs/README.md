@@ -6,4 +6,5 @@ Open work carried across sessions. One file per topic. Close an item by flipping
 
 | Handoff | Status | Summary |
 |---|---|---|
+| [pre-launch-audit.md](pre-launch-audit.md) | OPEN | What a claim audit found before going public — the host-constraint gate does not read the host constraints, and four other claims outrun their evidence |
 | [pre-publication.md](pre-publication.md) | OPEN | What remains before making the repository public, and what is deliberately deferred past v0.1 |
