@@ -140,6 +140,13 @@ entirely; capped at 60 the same page completed in 80 seconds. Skipped resources 
 `asset_cap_applied` marks the run so its total is read as a floor over a sample rather than a
 page weight.
 
+**Before reaching for the cap, check whether one unreachable host is responsible.** The probe stops
+requesting a host after three consecutive timeouts and says so in `errors`, which keeps a dead
+domain from eating the whole walk — that was the real cause on the audit above, where font CSS
+pointed at a staging domain that resolved but never answered. Resources on a cut-off host are
+counted in `unsized_resources`, never as zero. If you see that message, the fix is usually to
+remove the reference to the dead host, not to shrink the walk.
+
 Read [references/measurement.md](references/measurement.md) before interpreting anything,
 especially: re-measure warm after any cache flush, and treat unmeasured resources as unknown
 rather than zero.

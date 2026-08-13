@@ -15,6 +15,13 @@ specification. Almost every entry is a defect that only appeared under real use.
   minutes and lost its byte breakdown; the same page capped at 60 finishes in 80 seconds.
   Resources are chosen in rotation across kinds so a capped breakdown still reflects the page,
   and `asset_cap_applied` marks the total as a floor over a sample.
+- **`perf-probe` stops requesting a host after three consecutive timeouts.** `--max-assets`
+  caps how many resources are sized, which bounds the symptom; it does not stop one unreachable
+  host from consuming the whole budget. On a real audit, font CSS pointed at a staging domain
+  that resolved but never answered, and every font request burned the full timeout. Only
+  timeouts trip it — a refused or unresolvable host fails in milliseconds and is self-limiting —
+  and the counter resets on any answered request, so a merely slow host recovers. Resources on a
+  cut-off host are counted in `unsized_resources` with the reason, never as zero.
 - `perf-probe --delay SECONDS` sets a minimum interval between requests, enforced across all
   workers, for sites that rate-limit sustained probing.
 - `perf-probe --user-agent STRING` overrides the request identity.
