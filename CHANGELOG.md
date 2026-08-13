@@ -47,6 +47,14 @@ specification. Almost every entry is a defect that only appeared under real use.
   requirements before executing anything.
 - `tools/adversarial_gate_tests.py`, `tools/check_plugin_manifest.py`, and the specification's
   own `skills-ref` validator in CI.
+- **`docs/TESTING.md`** — the release contract, plus an escaped-bug taxonomy with one row per
+  defect that reached a real run before a test caught it. Each row names the **miss-class**
+  rather than the bug, because a miss-class predicts the next defect and a bug only records the
+  last one. Writing it immediately earned its place: the bot-User-Agent fix had shipped with no
+  regression lock at all, so a refactor could have reverted the default and every check would
+  still have passed. Four cases now assert it, including that `fingerprint.py` and
+  `perf-probe.py` send the *same* string — on a bot-protected site, disagreement makes the two
+  scripts describe different pages.
 - Code of conduct, issue templates, and a pull-request template.
 
 ### Changed
