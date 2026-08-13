@@ -278,6 +278,7 @@ Produced by `capabilities.py`. Decides the access tier and which measurement pat
     "psi_api_key":          { "present": false, "version": null },
     "wp_cli":               { "present": false, "version": null }
   },
+  "staging":        { "declared": false, "url": "unknown" },
   "can_measure":    ["origin-vs-edge TTFB", "payload weight", "render-blocking resources"],
   "cannot_measure": ["autoloaded option size", "slow queries", "cron spikes"],
   "notes": ["No browser-capable tool found; Core Web Vitals cannot be measured in this session."]
@@ -295,6 +296,9 @@ Rules:
   admin access. It never on its own raises the tier above 0.
 - `can_measure` / `cannot_measure` are human-readable and mutually exclusive. Together they are
   what the agent reports to the operator as the honest boundary of the audit.
+- `staging` records an operator declaration via `--staging-url`, never an inference. It is
+  reported so the fix skill can choose a process, and its absence is a normal state rather than a
+  problem: it is `{"declared": false, "url": "unknown"}` on most sites.
 - Detection is **presence-only and local** — no credential is used, no login attempted, no
   request authenticated. Establishing that `/wp-json/` returns an index is a public GET.
 
@@ -317,6 +321,8 @@ stops the run. A plan is cheap to reject; a half-applied change to production is
   "tier": 2,
   "baseline_metrics": "baselines/before.json",
   "cache_layers_present": ["edge", "page-plugin"],
+  "staging": { "url": "https://staging.example.com", "confirmed_by": "MyKinsta environment" },
+  "sequence_rationale": "Purge configuration first, so the second change is measured warm.",
   "changes": [
     {
       "id": "c1",
@@ -378,6 +384,29 @@ Rules — each exists because violating it has a specific real-world cost:
   The accepted cost is that a fingerprint taken against a subpage no longer matches a plan whose
   `site` is the root — re-run `fingerprint.py` against the site root.
   </details>
+- **`staging` is declared, never inferred, and is not a gate.** Most WordPress sites have no
+  staging environment, and refusing to work on them would make the skill unused rather than safe —
+  the same reasoning that makes tier 0 a complete audit rather than a degraded one. Its absence
+  changes the evidence required, not whether work proceeds. When present it carries `url` and a
+  `confirmed_by` naming something a human could check; nothing observable from outside proves a URL
+  is this site's staging environment.
+- **A file-backed change needs staging OR stated `compensating_controls`.** `theme-file`,
+  `plugin-file` and `mu-plugin` changes can fatal a site, so a plan that has neither is refused —
+  not for lacking staging, but for having no answer to how a fatal would be survived.
+  `compensating_controls` carries `mechanism`, `verification` and `rollback_trigger`, all non-empty.
+  Database-backed kinds are exempt: the snapshot already holds the prior value and rollback is
+  setting it back. See [staging.md](../skills/wp-perf-fix/references/staging.md).
+- **Staging proves safety, not speed.** Managed staging commonly runs with page cache and OPcache
+  disabled, so a before/after measured there is not evidence about production. The scorecard's
+  measurement always happens on production, warm.
+- **Promotion depends on where the change lives.** File-backed changes are promoted by pushing
+  **files only**. Database-backed changes are **re-applied** on production and never promoted by a
+  database push, which would discard everything written to the live site since the staging copy —
+  comments, sign-ups, orders.
+- **`changes` is a serial queue, executed one at a time.** More than one is legitimate, because
+  performance work has real dependencies. A plan carrying several must state
+  `sequence_rationale`: what each change depends on, and what would be mis-attributed in another
+  order. Ids stay unique so a report and a rollback can name one unambiguously.
 - **`tier` must be sufficient for every `target.kind`** in the plan — a `theme-file` change needs
   tier 3, a `wp-option` change needs tier 2, and so on. Planning a change the access level cannot
   perform wastes an approval round-trip at best.
