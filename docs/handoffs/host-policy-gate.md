@@ -1,8 +1,16 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
 # Scope — make the documented hard gates real
 
-**Status:** OPEN · **Opened:** 2026-08-13 · **Owner:** maintainer ·
-**Blocks:** public launch ([pre-launch-audit.md](pre-launch-audit.md) finding 1)
+**Status:** DONE · **Opened:** 2026-08-13 · **Owner:** maintainer
+
+**All three are shipped.** The host gate reads a cited policy table for all 17 host classes and
+cannot be talked past by the plan. Staging became a capability rather than a precondition — its
+absence raises the evidence required, never blocks the work — after the operator corrected an
+earlier draft that would have refused prod-only sites. The queue reading is settled as serial, with
+a required `sequence_rationale` when a plan carries more than one change.
+
+The scope below is kept because its reasoning is what a future gate should follow, and because the
+`unconfirmable` escape hatch and the fail-closed rules are still the design in force.
 
 ## The problem in one test
 
