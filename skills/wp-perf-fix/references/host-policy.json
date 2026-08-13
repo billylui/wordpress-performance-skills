@@ -1,0 +1,147 @@
+{
+  "schema_version": "1.0",
+  "tool": "host-policy",
+  "scope": "Page-cache plugin changes only. Other change kinds are not yet encoded; see the limits note.",
+  "authority": "host-constraints.md is the authoritative human document. Every verdict and citation here is transcribed from it, and tools/check_host_policy.py fails the build if the two disagree.",
+  "limits": [
+    "This covers a change whose target identifier is a RECOGNIZED page-cache plugin. A page cache published under a slug outside page_cache_plugins is not gated here and must still be checked against host-constraints.md by hand.",
+    "A verdict of permitted is never a claim that the change is safe or beneficial, only that the host does not forbid it. Host permission is not site suitability.",
+    "Policies change. Re-open the cited document at execution time; a stale permissive verdict is the most damaging error this file can carry."
+  ],
+  "verdicts": {
+    "prohibited": "The host forbids it. Refused, and operator confirmation cannot override a published prohibition.",
+    "permitted-only": "Permitted for the named plugins only. Anything else is treated as unconfirmable.",
+    "permitted-with-conditions": "Documented as allowed, but conditioned on the exact product or configuration, so it still requires confirmation.",
+    "unconfirmable": "No first-party documentation settles it. Prohibited until the operator supplies confirmation."
+  },
+  "page_cache_plugins": [
+    "breeze",
+    "cache-enabler",
+    "litespeed-cache",
+    "sg-optimizer",
+    "surge",
+    "w3-total-cache",
+    "wp-fastest-cache",
+    "wp-rocket",
+    "wp-super-cache"
+  ],
+  "hosts": {
+    "bluehost": {
+      "page_cache": "prohibited",
+      "permitted_plugins": [],
+      "reason": "Bluehost manages page caching and says third-party page-cache plugins should not be installed; existing ones should be removed. Any product not covered by that guidance is unconfirmable.",
+      "citations": ["https://www.bluehost.com/help/article/caching-at-bluehost"]
+    },
+    "cloudways": {
+      "page_cache": "permitted-only",
+      "permitted_plugins": ["breeze", "wp-rocket"],
+      "reason": "Cloudways documents breeze as its default WordPress cache with Varnish integration, and separately documents WP Rocket. Every other page-cache plugin is unconfirmable until Cloudways confirms it for the application.",
+      "citations": [
+        "https://support.cloudways.com/en/articles/5126470-how-to-install-and-configure-breeze-wordpress-cache-plugin",
+        "https://support.cloudways.com/en/articles/5133598-how-to-configure-wp-rocket-plugin-for-wordpress"
+      ]
+    },
+    "flywheel": {
+      "page_cache": "prohibited",
+      "permitted_plugins": [],
+      "reason": "Flywheel documents server caching, calls caching plugins unsupported or not recommended, and says caching features in broader optimization plugins should be disabled.",
+      "citations": ["https://getflywheel.com/wordpress-support/what-plugins-are-not-recommended/"]
+    },
+    "godaddy": {
+      "page_cache": "unconfirmable",
+      "permitted_plugins": [],
+      "reason": "No blanket first-party page-cache allowance or disallowed-plugin list was confirmed across the products in this class. Ask GoDaddy about the exact product and plugin.",
+      "citations": []
+    },
+    "hostinger": {
+      "page_cache": "permitted-with-conditions",
+      "permitted_plugins": [],
+      "reason": "Hostinger documents that its Cache Manager can coexist with a WordPress cache plugin, and that only one cache plugin should be used. That is not permission for an arbitrary plugin on every product; confirm the exact product, plugin, and LiteSpeed interaction.",
+      "citations": ["https://www.hostinger.com/support/6215624-how-to-use-cache-manager-at-hostinger/"]
+    },
+    "kinsta": {
+      "page_cache": "prohibited",
+      "permitted_plugins": [],
+      "reason": "Kinsta publishes a banned and incompatible plugin list, says caching plugins are generally not allowed, and blocks installation of banned plugins. A documented optimization-plugin exception does not grant its own page cache.",
+      "citations": ["https://kinsta.com/docs/wordpress-hosting/wordpress-plugins-themes/wordpress-banned-incompatible-plugins/"]
+    },
+    "other": {
+      "page_cache": "unconfirmable",
+      "permitted_plugins": [],
+      "reason": "The provider and product are not mapped to documented policy. This is the most restrictive lane until they are.",
+      "citations": []
+    },
+    "pantheon": {
+      "page_cache": "unconfirmable",
+      "permitted_plugins": [],
+      "reason": "Pantheon publishes a known-issues list and says it does not prevent installation of listed plugins, but several caches need writable-path adaptations or conflict with the platform cache. Not blocked is not safe.",
+      "citations": ["https://docs.pantheon.io/wordpress-known-issues"]
+    },
+    "pressable": {
+      "page_cache": "prohibited",
+      "permitted_plugins": [],
+      "reason": "Pressable documents Batcache, object cache and edge cache as platform-owned, and its advanced-cache.php and object-cache.php are read-only symlinks, so a third-party cache cannot take ownership reliably.",
+      "citations": [
+        "https://pressable.com/knowledgebase/pressable-cache-management-plugin/",
+        "https://pressable.com/knowledgebase/understand-wordpress-errors-a-troubleshooting-guide-for-pressable-sites/"
+      ]
+    },
+    "rocket-net": {
+      "page_cache": "unconfirmable",
+      "permitted_plugins": [],
+      "reason": "No first-party documentation sufficient to verify either a blanket allowance or a maintained disallowed list was confirmed. Do not infer permission from a successful installation.",
+      "citations": []
+    },
+    "self-managed": {
+      "page_cache": "permitted-with-conditions",
+      "permitted_plugins": [],
+      "reason": "The operator owns the allow and deny policy, but a second full-page cache stays prohibited until every edge, server, page-plugin and object cache owner and purge path is inventoried. No upstream host permission can be inferred from this label.",
+      "citations": []
+    },
+    "shared-cpanel": {
+      "page_cache": "unconfirmable",
+      "permitted_plugins": [],
+      "reason": "cPanel identifies a control panel, not a provider or a cache policy. cPanel access is not permission, and does not prove that LiteSpeed, Nginx, Varnish or a hidden host cache is absent.",
+      "citations": []
+    },
+    "siteground": {
+      "page_cache": "permitted-only",
+      "permitted_plugins": ["sg-optimizer"],
+      "reason": "SiteGround recommends Speed Optimizer and exposes Dynamic Cache separately. Its documentation acknowledges third-party caches but does not establish blanket permission for every cache plugin.",
+      "citations": [
+        "https://www.siteground.com/kb/google-pagespeed-insights-guide/",
+        "https://www.siteground.com/kb/changes_not_showing_up_my_wordpress_site/"
+      ]
+    },
+    "unknown": {
+      "page_cache": "unconfirmable",
+      "permitted_plugins": [],
+      "reason": "The provider and its disallowed list are unknown. Identify the provider before proposing any page-cache change.",
+      "citations": []
+    },
+    "wpcom": {
+      "page_cache": "prohibited",
+      "permitted_plugins": [],
+      "reason": "WordPress.com publishes an incompatible-plugin list, blocks or disables named caching plugins, and directs customers to its built-in cache.",
+      "citations": [
+        "https://wordpress.com/support/plugins/incompatible-plugins/",
+        "https://wordpress.com/support/check-your-sites-performance/"
+      ]
+    },
+    "wpengine": {
+      "page_cache": "prohibited",
+      "permitted_plugins": [],
+      "reason": "WP Engine maintains a disallowed-plugin list, explains that caching plugins conflict with its built-in cache, and says listed plugins are eventually removed. Do not infer that an unlisted cache is supported.",
+      "citations": ["https://wpengine.com/support/disallowed-plugins/"]
+    },
+    "wpvip": {
+      "page_cache": "unconfirmable",
+      "permitted_plugins": [],
+      "reason": "WordPress VIP owns a page-cache and CDN layer. Applications can choose plugins and receive scanning, but that does not establish permission for a second full-page cache.",
+      "citations": [
+        "https://docs.wpvip.com/guidebooks/develop-on-wpvip/wpvip-infrastructure/",
+        "https://wpvip.com/plugins-on-wordpress-vip/"
+      ]
+    }
+  }
+}

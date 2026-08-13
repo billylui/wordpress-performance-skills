@@ -265,6 +265,54 @@ def main() -> int:
         expect_exit("preflight accepts a plan pending approval+snapshot", [VALIDATE, pending, "--preflight", "--quiet"], 0)
         expect_exit("execution mode refuses that same plan", [VALIDATE, pending, "--quiet"], 1)
 
+        print("\n=== validate_plan.py — the host's own policy, not the plan's label ===")
+        # Until this gate existed, the refusal the whole skill advertises was a LABEL check: a
+        # change was refused only when the plan had already written risk_lane 'prohibited'. A plan
+        # declaring host_class wpengine while activating WP Rocket — a page cache WP Engine's own
+        # disallowed list forbids — passed with zero problems. Taxonomy row WP-ESC-07.
+        def cache_plan(host: str, plugin: str, **extra) -> pathlib.Path:
+            change = {"target": {"kind": "plugin-setting", "identifier": plugin},
+                      "risk_lane": "direct",
+                      "catalog_entry": "caching/page-cache-missing-or-bypassed.md"}
+            change.update(extra)
+            return write_plan(tmp, tier=2, host_class=host, change=change)
+
+        # CONTROLS FIRST. Without these, every refusal below would also pass against a gate that
+        # simply rejected all page-cache changes, which would be useless rather than safe.
+        expect_exit("CONTROL: sg-optimizer on siteground is its documented path",
+                    [VALIDATE, cache_plan("siteground", "sg-optimizer"), "--preflight", "--quiet"], 0)
+        expect_exit("CONTROL: breeze on cloudways is documented",
+                    [VALIDATE, cache_plan("cloudways", "breeze"), "--preflight", "--quiet"], 0)
+        expect_exit("CONTROL: a plugin that is not a page cache is not gated",
+                    [VALIDATE, cache_plan("wpengine", "some-unrelated-plugin"), "--preflight", "--quiet"], 0)
+
+        expect_exit("a page cache on wpengine is refused (first-party disallowed list)",
+                    [VALIDATE, cache_plan("wpengine", "wp-rocket"), "--preflight", "--quiet"], 1)
+        expect_exit("a page cache on kinsta is refused (banned list)",
+                    [VALIDATE, cache_plan("kinsta", "wp-rocket"), "--preflight", "--quiet"], 1)
+        expect_exit("a page cache siteground does not document is refused",
+                    [VALIDATE, cache_plan("siteground", "wp-rocket"), "--preflight", "--quiet"], 1)
+        expect_exit("an unconfirmable host refuses a page cache by default",
+                    [VALIDATE, cache_plan("godaddy", "wp-rocket"), "--preflight", "--quiet"], 1)
+
+        # The escape hatch, and its two limits. Without the hatch the gate would brick every audit
+        # on the hosts that need it most; without the limits it would be a bypass.
+        confirmed = {"source": "GoDaddy support ticket 1234567",
+                     "scope": "Managed WordPress, WP Rocket activation on this account"}
+        expect_exit("operator confirmation unblocks an UNCONFIRMABLE host",
+                    [VALIDATE, cache_plan("godaddy", "wp-rocket", host_confirmation=confirmed),
+                     "--preflight", "--quiet"], 0)
+        expect_exit("confirmation CANNOT override a published prohibition",
+                    [VALIDATE, cache_plan("wpengine", "wp-rocket", host_confirmation=confirmed),
+                     "--preflight", "--quiet"], 1)
+        expect_exit("a confirmation with no checkable source is refused",
+                    [VALIDATE, cache_plan("godaddy", "wp-rocket",
+                                          host_confirmation={"source": "", "scope": ""}),
+                     "--preflight", "--quiet"], 1)
+        expect_exit("host_confirmation: true is not a confirmation",
+                    [VALIDATE, cache_plan("godaddy", "wp-rocket", host_confirmation=True),
+                     "--preflight", "--quiet"], 1)
+
         print("\n=== validate_plan.py — a fingerprint must belong to the plan's installation ===")
         expect_exit("CONTROL: matching stack profile is accepted",
                     [VALIDATE, write_plan(tmp), "--stack", write_stack(tmp, "https://example.com/"), "--quiet"], 0)

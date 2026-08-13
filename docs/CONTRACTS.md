@@ -328,6 +328,15 @@ Rules — each exists because violating it has a specific real-world cost:
 - **`risk_lane`** is `direct` | `staging-first` | `prohibited`. A change is `prohibited` when the
   host forbids it; the validator rejects the whole plan rather than skipping the change, because
   a plan containing a prohibited action was built on a wrong understanding of the environment.
+- **The host's page-cache policy is checked against a table, not read from the plan.**
+  `references/host-policy.json` carries each host's verdict, transcribed from `host-constraints.md`
+  with its first-party citation, and `validate_plan.py` computes the verdict from `host_class` plus
+  the change's own target. A plan cannot assert its way past it, for the same reason
+  `approval.required: false` is refused rather than obeyed. An unmapped host is refused, not exempt.
+- **`host_confirmation`** is optional, and carries **evidence, never a verdict**:
+  `{"source": "…", "scope": "…"}`, both non-empty. It upgrades an `unconfirmable` host — the common
+  case, and without it the gate would block legitimate work on most real sites. It can **never**
+  override a published prohibition, and it is not approval: per-change approval is still separate.
 - **`snapshot.artifact` must exist on disk before execution.** `required: true` with a missing
   artifact fails validation. A change you cannot reverse is not a change you may make.
 - **`approval.granted` must be `true` at execution time**, per change. Approval for one change is
