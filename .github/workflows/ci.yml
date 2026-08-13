@@ -54,6 +54,20 @@ jobs:
       - name: Plugin manifests match the documented install command
         run: python tools/check_plugin_manifest.py
 
+      - name: Adversarial gate suite
+        # docs/TESTING.md declares WP-GATE-02 always-on and says every always-on row runs here.
+        # It did not. Every lock in this suite — the host-policy gate, staging controls, the
+        # circuit breaker, the fingerprint's unknowns — was unenforced by CI while the release
+        # contract claimed otherwise, which is the same documented-but-not-enforced shape the
+        # suite itself exists to catch.
+        run: python tools/adversarial_gate_tests.py
+
+      - name: Host policy agrees with its human document
+        # The prose file is authoritative and cited; the JSON is the half the validator can
+        # enforce. Two files stating the same policy drift, and the permissive direction would
+        # hand an operator a change their host forbids.
+        run: python tools/check_host_policy.py
+
       - name: Change-plan validator self-test
         # The fix skill's gate is a safety device. If its own refusals stop working, every other
         # guarantee in wp-perf-fix rests on nothing.

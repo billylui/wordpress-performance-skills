@@ -121,12 +121,15 @@ and WP-HOST-01 — have therefore never been exercised as a checklist row rather
 **Fix:** run `/release-gate` once against `docs/TESTING.md` and keep the report, so the first real
 use is not also the first release that depends on it.
 
-### 7. The `sspe-website` audit PR #67 is open and unreviewed
+### 7. The first real audit is open and unreviewed in the client's own repository
 
 A genuine audit of a live client site, written before the report contract existed. It was used as the
 test artifact while building `check_report.py` and fails that checker on section shape and on every
 scorecard row — which is the specification working, not a defect in the audit. The audit itself has
 not been reviewed or merged, and nothing in this repository changed it.
+
+The site and its repository are deliberately not named here. Everything this project needed from
+that engagement is generalized in [../case-study-anonymized.md](../case-study-anonymized.md).
 
 ### 8. Distribution and outreach — not started, deliberately
 

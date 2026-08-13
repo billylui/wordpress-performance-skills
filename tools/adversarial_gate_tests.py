@@ -145,6 +145,15 @@ def write_plan(tmp: pathlib.Path, *, site="https://example.com", tier=3,
             "direction": "decrease",
         },
         "rollback": "restore snap.bak",
+        # A code change on a site with no declared staging must say how that is being managed.
+        # Included by default because it is the common real case — most WordPress sites have no
+        # staging — so every unrelated control below stays about the guard it is actually testing.
+        # Cases that exercise the ABSENCE of a staging story clear this explicitly.
+        "compensating_controls": {
+            "mechanism": "small mu-plugin rather than functions.php",
+            "verification": "php -l, then a visitor GET of the homepage",
+            "rollback_trigger": "5xx or WordPress's critical-error page",
+        },
     }
     change.update(over.pop("change", {}))
     plan = {
@@ -264,6 +273,139 @@ def main() -> int:
             "snapshot": {"required": True, "artifact": str(tmp / "not-yet.bak")}})
         expect_exit("preflight accepts a plan pending approval+snapshot", [VALIDATE, pending, "--preflight", "--quiet"], 0)
         expect_exit("execution mode refuses that same plan", [VALIDATE, pending, "--quiet"], 1)
+
+        print("\n=== validate_plan.py — staging changes the process, never whether work proceeds ===")
+        # Staging is a capability, not a precondition: most WordPress sites have none, and refusing
+        # to work on them would make this skill unused rather than safe. What is refused is a CODE
+        # change with neither staging nor a stated plan for surviving without one, because a PHP
+        # fatal there takes the whole site down. Taxonomy row WP-ESC-10.
+        controls = {"mechanism": "small mu-plugin rather than functions.php",
+                    "verification": "php -l, then a visitor GET of the homepage",
+                    "rollback_trigger": "5xx or WordPress's critical-error page"}
+        staged = {"url": "https://staging.example.com",
+                  "confirmed_by": "MyKinsta staging environment for this site, seen in the panel"}
+
+        def code_plan(**over) -> pathlib.Path:
+            return write_plan(tmp, tier=3, **over)
+
+        def db_plan(**over) -> pathlib.Path:
+            change = {"target": {"kind": "wp-option", "identifier": "some_option"},
+                      "risk_lane": "direct"}
+            change.update(over.pop("change", {}))
+            return write_plan(tmp, tier=2, change=change, **over)
+
+        expect_exit("a code change with no staging and no stated controls is refused",
+                    [VALIDATE, code_plan(change={"compensating_controls": None}),
+                     "--preflight", "--quiet"], 1)
+        expect_exit("CONTROL: the same change with declared staging is accepted",
+                    [VALIDATE, code_plan(staging=staged, change={"compensating_controls": None}),
+                     "--preflight", "--quiet"], 0)
+        expect_exit("CONTROL: the same change with full compensating controls is accepted",
+                    [VALIDATE, code_plan(change={"compensating_controls": controls}),
+                     "--preflight", "--quiet"], 0)
+        expect_exit("staging declared without a checkable confirmation is refused",
+                    [VALIDATE, code_plan(staging={"url": "https://staging.example.com"},
+                                         change={"compensating_controls": None}),
+                     "--preflight", "--quiet"], 1)
+        # A declaration that is not a usable URL, or that names production, would let a
+        # "staging-first" change run straight against production while appearing satisfied.
+        expect_exit("staging.url that is the production site is refused",
+                    [VALIDATE, code_plan(staging={"url": "https://example.com",
+                                                  "confirmed_by": "panel"},
+                                         change={"compensating_controls": None}),
+                     "--preflight", "--quiet"], 1)
+        expect_exit("staging.url that is not a URL at all is refused",
+                    [VALIDATE, code_plan(staging={"url": "yes we have staging",
+                                                  "confirmed_by": "panel"},
+                                         change={"compensating_controls": None}),
+                     "--preflight", "--quiet"], 1)
+        expect_exit("partially stated controls are not controls",
+                    [VALIDATE, code_plan(change={"compensating_controls": {"mechanism": "careful"}}),
+                     "--preflight", "--quiet"], 1)
+        # A database change is reversible by setting the value back, and its snapshot already holds
+        # the prior value — gating it on staging would refuse most performance work for no gain.
+        expect_exit("CONTROL: a database change needs no staging at all",
+                    [VALIDATE, db_plan(), "--preflight", "--quiet"], 0)
+
+        print("\n=== validate_plan.py — a multi-change plan is a queue, not a pile ===")
+        # `changes` is executed one at a time. Several are legitimate, because performance work has
+        # real dependencies. What is refused is an unordered pile: a queue nobody sequenced.
+        two = [
+            {"id": "c1", "summary": "first", "catalog_entry": "frontend/fonts-preloaded-unused.md",
+             "risk_lane": "direct", "target": {"kind": "wp-option", "identifier": "a"},
+             "snapshot": {"required": True, "artifact": str(tmp / "snap.bak")},
+             "approval": {"required": True, "granted": True}, "purge_layers": ["page-plugin"],
+             "expected_effect": {"metric": "total_kb", "url": "https://example.com/",
+                                 "direction": "decrease"}, "rollback": "restore"},
+        ]
+        second = json.loads(json.dumps(two[0])); second["id"] = "c2"
+        expect_exit("two queued changes with no stated ordering are refused",
+                    [VALIDATE, write_plan(tmp, tier=2, changes=two + [second]),
+                     "--preflight", "--quiet"], 1)
+        expect_exit("CONTROL: the same two with a sequence_rationale are accepted",
+                    [VALIDATE, write_plan(tmp, tier=2, changes=two + [second],
+                                          sequence_rationale="Purge configuration first, so the "
+                                          "second change is measured against a clean cache."),
+                     "--preflight", "--quiet"], 0)
+        expect_exit("CONTROL: a single change needs no rationale",
+                    [VALIDATE, write_plan(tmp, tier=2, changes=two), "--preflight", "--quiet"], 0)
+
+        print("\n=== validate_plan.py — the host's own policy, not the plan's label ===")
+        # Until this gate existed, the refusal the whole skill advertises was a LABEL check: a
+        # change was refused only when the plan had already written risk_lane 'prohibited'. A plan
+        # declaring host_class wpengine while activating WP Rocket — a page cache WP Engine's own
+        # disallowed list forbids — passed with zero problems. Taxonomy row WP-ESC-07.
+        def cache_plan(host: str, plugin: str, **extra) -> pathlib.Path:
+            change = {"target": {"kind": "plugin-setting", "identifier": plugin},
+                      "risk_lane": "direct",
+                      "catalog_entry": "caching/page-cache-missing-or-bypassed.md"}
+            change.update(extra)
+            return write_plan(tmp, tier=2, host_class=host, change=change)
+
+        # CONTROLS FIRST. Without these, every refusal below would also pass against a gate that
+        # simply rejected all page-cache changes, which would be useless rather than safe.
+        expect_exit("CONTROL: sg-optimizer on siteground is its documented path",
+                    [VALIDATE, cache_plan("siteground", "sg-optimizer"), "--preflight", "--quiet"], 0)
+        expect_exit("CONTROL: breeze on cloudways is documented",
+                    [VALIDATE, cache_plan("cloudways", "breeze"), "--preflight", "--quiet"], 0)
+        expect_exit("CONTROL: a plugin that is not a page cache is not gated",
+                    [VALIDATE, cache_plan("wpengine", "some-unrelated-plugin"), "--preflight", "--quiet"], 0)
+
+        expect_exit("a page cache on wpengine is refused (first-party disallowed list)",
+                    [VALIDATE, cache_plan("wpengine", "wp-rocket"), "--preflight", "--quiet"], 1)
+        # The bare slug was the ONLY form the gate recognised at first, and it is the least likely
+        # one to appear: WordPress identifies a plugin by its basename, and a settings target names
+        # an option. Both bypassed the gate entirely.
+        for identifier in ("wp-rocket/wp-rocket.php", "wp_rocket_settings[minify_css]", "WP-Rocket"):
+            expect_exit(f"…and so is the same plugin written as {identifier!r}",
+                        [VALIDATE, cache_plan("wpengine", identifier), "--preflight", "--quiet"], 1)
+        expect_exit("CONTROL: an unrelated plugin basename is still not gated",
+                    [VALIDATE, cache_plan("wpengine", "contact-form-7/wp-contact-form-7.php"),
+                     "--preflight", "--quiet"], 0)
+        expect_exit("a page cache on kinsta is refused (banned list)",
+                    [VALIDATE, cache_plan("kinsta", "wp-rocket"), "--preflight", "--quiet"], 1)
+        expect_exit("a page cache siteground does not document is refused",
+                    [VALIDATE, cache_plan("siteground", "wp-rocket"), "--preflight", "--quiet"], 1)
+        expect_exit("an unconfirmable host refuses a page cache by default",
+                    [VALIDATE, cache_plan("godaddy", "wp-rocket"), "--preflight", "--quiet"], 1)
+
+        # The escape hatch, and its two limits. Without the hatch the gate would brick every audit
+        # on the hosts that need it most; without the limits it would be a bypass.
+        confirmed = {"source": "GoDaddy support ticket 1234567",
+                     "scope": "Managed WordPress, WP Rocket activation on this account"}
+        expect_exit("operator confirmation unblocks an UNCONFIRMABLE host",
+                    [VALIDATE, cache_plan("godaddy", "wp-rocket", host_confirmation=confirmed),
+                     "--preflight", "--quiet"], 0)
+        expect_exit("confirmation CANNOT override a published prohibition",
+                    [VALIDATE, cache_plan("wpengine", "wp-rocket", host_confirmation=confirmed),
+                     "--preflight", "--quiet"], 1)
+        expect_exit("a confirmation with no checkable source is refused",
+                    [VALIDATE, cache_plan("godaddy", "wp-rocket",
+                                          host_confirmation={"source": "", "scope": ""}),
+                     "--preflight", "--quiet"], 1)
+        expect_exit("host_confirmation: true is not a confirmation",
+                    [VALIDATE, cache_plan("godaddy", "wp-rocket", host_confirmation=True),
+                     "--preflight", "--quiet"], 1)
 
         print("\n=== validate_plan.py — a fingerprint must belong to the plan's installation ===")
         expect_exit("CONTROL: matching stack profile is accepted",
@@ -396,6 +538,64 @@ def main() -> int:
     expect_exit("unreachable host is still exit 3, not 4",
                 [PROBE, "--site", "https://nope-xyz-nores.invalid", "--quick", "--repeats", "1", "--quiet"], 3)
 
+    print("\n=== fingerprint.py — absence of evidence must not become a negative claim ===")
+    fingerprint_mod = load_module("fingerprint", FINGERPRINT)
+    # The repo calls "`unknown` is a first-class value; never guess" the single most important rule
+    # it has, and the fingerprint broke it in one direction: finding no marker produced
+    # `woocommerce: false`, `multilingual: none`, `is_wordpress: false` at medium confidence. The
+    # WooCommerce case has a documented harm path — this project's own catalog says a false result
+    # "does not prove that no store exists" and warns that brochure-site caching advice on a store
+    # can expose private cart or order state. Taxonomy row WP-ESC-08.
+    def fingerprint_signals(html: str):
+        pages = [fingerprint_mod.FetchedPage(
+            requested_url="https://e.invalid/", final_url="https://e.invalid/", status=200,
+            headers={}, cookies=[], html=html, truncated=False, error="", redirect_notes=[])] * 3
+        parsers = []
+        for page in pages:
+            parser = fingerprint_mod.PageParser()
+            parser.feed(page.html)
+            parsers.append(parser)
+        wordpress, _version = fingerprint_mod.detect_wordpress(pages, parsers)
+        multilingual, _notes = fingerprint_mod.detect_multilingual(pages, parsers, [])
+        return {
+            "is_wordpress": wordpress,
+            "multilingual": multilingual,
+            "woocommerce": fingerprint_mod.detect_woocommerce(pages, parsers),
+        }
+
+    # CONTROL FIRST: with markers present these must still be definite, or a fingerprint that
+    # answered "unknown" to everything would pass every case below while detecting nothing.
+    present = fingerprint_signals(
+        '<html><body class="woocommerce">'
+        '<a href="/wp-content/plugins/woocommerce/x.js"></a>'
+        '<link href="/wp-content/plugins/sitepress-multilingual-cms/y.css">'
+        '<script src="/wp-includes/js/z.js"></script></body></html>'
+    )
+    record(present["is_wordpress"]["value"] is True,
+           "CONTROL: real WordPress markers still yield a definite true",
+           f"got {present['is_wordpress']['value']!r}")
+    record(present["woocommerce"]["value"] is True,
+           "CONTROL: real WooCommerce markers still yield a definite true",
+           f"got {present['woocommerce']['value']!r}")
+    record(present["multilingual"]["value"] == "wpml",
+           "CONTROL: a real multilingual product is still named",
+           f"got {present['multilingual']['value']!r}")
+
+    absent = fingerprint_signals("<html><body><p>nothing identifying here</p></body></html>")
+    for field in ("is_wordpress", "woocommerce", "multilingual"):
+        signal = absent[field]
+        record(signal["value"] == "unknown",
+               f"no marker yields unknown, not a negative claim: {field}",
+               f"got {signal['value']!r} @ {signal['confidence']!r}")
+    record(absent["woocommerce"]["confidence"] == "none",
+           "an unknown carries confidence 'none', per the signal contract",
+           f"got {absent['woocommerce']['confidence']!r}")
+    # The observation itself must survive — "we looked and saw none" is useful; concluding false
+    # from it is not. An unknown with no evidence would hide that the check ran at all.
+    record(bool(absent["woocommerce"]["evidence"]),
+           "the absence observation is still reported as evidence",
+           f"evidence entries: {len(absent['woocommerce']['evidence'])}")
+
     print("\n=== the probe must not identify as a bot and measure a challenge page ===")
     # An escaped defect with no lock until now: an honest bot User-Agent is the intuitive choice
     # and was the original one, but security plugins, host WAFs and CDN bot rules answer it with a
@@ -404,7 +604,6 @@ def main() -> int:
     #
     # Nothing asserted this, so a refactor could have reverted the default and every test would
     # still have passed. Taxonomy row PERF-04 in docs/TESTING.md.
-    fingerprint_mod = load_module("fingerprint", FINGERPRINT)
     record(probe.DEFAULT_USER_AGENT.startswith("Mozilla/5.0"),
            "perf-probe's default User-Agent is a browser string",
            f"starts {probe.DEFAULT_USER_AGENT[:24]!r}")
@@ -436,6 +635,37 @@ def main() -> int:
     # third-party endpoint (undeclared egress) or a fixture that must hang for a full timeout.
     probe.BREAKER.reset()
     dead, alive = "dead.invalid", "alive.invalid"
+
+    # Discovery runs BEFORE sizing and is serial, so gating only the sizing pool left the exact
+    # path that caused the motivating stall — font CSS on a host that resolved and never answered —
+    # paying a full timeout per stylesheet. Driven against the real discovery function with curl
+    # stubbed, because reproducing it needs a host that accepts and never replies.
+    real_run_curl = probe.run_curl
+    try:
+        def stub(_binary, args):
+            url = args[-1]
+            if dead in url:
+                return {"returncode": probe.CURL_TIMEOUT_CODE, "stdout": b"",
+                        "error": "timed out", "unreachable": True}
+            return {"returncode": 0, "stdout": b"HTTP/1.1 200 OK\r\n\r\n",
+                    "error": "", "unreachable": False}
+        probe.run_curl = stub
+        probe.BREAKER.reset()
+        links = "".join(f'<link rel="stylesheet" href="https://{dead}/f{i}.css">' for i in range(10))
+        _res, errs, incomplete = probe.discover_resources(
+            "/curl", "https://live.invalid/", f"<html><head>{links}</head></html>")
+        # Named distinctly: `skipped` is the module-level list of SKIPPED CASES, and shadowing it
+        # here broke the suite's own summary line.
+        css_skipped = sum(1 for e in errs if "stopped answering" in e)
+        record(css_skipped >= 6,
+               "the breaker also covers stylesheet DISCOVERY, not just sizing",
+               f"{css_skipped} of 10 stylesheets skipped after the circuit opened")
+        record(incomplete is True,
+               "a discovery cut short by the breaker is reported incomplete, not complete",
+               f"discovery_incomplete={incomplete}")
+    finally:
+        probe.run_curl = real_run_curl
+        probe.BREAKER.reset()
 
     # Positive control: a host under the limit stays in service. Without this, every negative
     # case below would also pass against a breaker that simply refused everything.
@@ -478,6 +708,21 @@ def main() -> int:
     record(probe.CURL_TIMEOUT_CODE in probe.UNREACHABLE_CURL_CODES,
            "the code the breaker counts is curl's timeout code",
            f"CURL_TIMEOUT_CODE={probe.CURL_TIMEOUT_CODE}")
+
+    # The sizing pool runs several requests at once, so three can time out and open the circuit
+    # while a fourth to the same host is still in flight — and then answers. Leaving the circuit
+    # open there keeps skipping a host just watched responding, and understates the payload for
+    # the rest of the run. Found by review; the counter reset alone did not close the circuit.
+    probe.BREAKER.reset()
+    for _ in range(probe.HOST_TIMEOUT_CIRCUIT_LIMIT):
+        probe.BREAKER.record_outcome(dead, True)
+    record(probe.BREAKER.is_open(dead),
+           "CONTROL: the circuit is open before the in-flight reply arrives",
+           f"open={probe.BREAKER.is_open(dead)}")
+    probe.BREAKER.record_outcome(dead, False)
+    record(not probe.BREAKER.is_open(dead),
+           "an in-flight request that answers CLOSES the circuit again",
+           f"open={probe.BREAKER.is_open(dead)} after the host demonstrably replied")
 
     # Nothing skipped may be counted as zero bytes — that would turn a dead host into a quietly
     # smaller page, which is the exact failure the payload totals rule exists to prevent.

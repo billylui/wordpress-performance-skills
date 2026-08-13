@@ -58,6 +58,15 @@ TIME_SENSITIVE_PATTERNS = (
 # A script invoked through a path rooted at this repository rather than at the skill itself.
 REPO_RELATIVE_SCRIPT_RE = re.compile(r"python3?\s+skills/[a-z0-9-]+/scripts/")
 
+# A retired blanket permission. Six catalog entries carried it and the entry template instructed
+# authors to write it, so it regenerates unless something refuses it. It is almost never true: a
+# defect class can be host-neutral, but the change MECHANISM is not — a WP Engine GitPush reverts
+# direct edits to tracked files, Pantheon's Live code is read-only, and several platforms own the
+# cache drop-ins outright. An operator reading blanket permission is being told the host gate does
+# not apply to them, and an incorrect permissive claim about a host is the most damaging error this
+# project can make.
+BLANKET_HOST_PERMISSION_RE = re.compile(r"No host-specific restriction applies", re.I)
+
 # Lines carrying this marker are exempt: historical notes are allowed to name a version or date
 # as long as they are explicitly labelled as history.
 HISTORY_MARKERS = ("<details>", "historical", "old pattern", "deprecated")
@@ -127,7 +136,17 @@ def check_skill(skill_dir: Path, repo_root: Path) -> list[str]:
                     f"the skill directory first and use \"$SKILL_DIR/scripts/…\"\n    {line.strip()}"
                 )
 
-    # --- 4. no time-sensitive claims -----------------------------------------------------
+    # --- 4. no blanket host permission ---------------------------------------------------
+    for path in md_files:
+        for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            if BLANKET_HOST_PERMISSION_RE.search(line):
+                problems.append(
+                    f"{rel(path)}:{lineno}: blanket host permission. Say that no host prohibits "
+                    f"the fix CLASS, and that the host's constraints on the change mechanism still "
+                    f"apply — the deploy path that owns production varies by host.\n    {line.strip()}"
+                )
+
+    # --- 5. no time-sensitive claims -----------------------------------------------------
     for path in md_files:
         for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
             lowered = line.lower()
