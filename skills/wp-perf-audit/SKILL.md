@@ -101,9 +101,14 @@ python3 "$SKILL_DIR/scripts/perf-probe.py" --site <URL> --repeats 3 --json /tmp/
 ```
 
 **Origin TTFB and edge TTFB are separate numbers and must stay separate.** Origin is measured
-with a unique cache-buster so every hit is a genuine miss — real WordPress render time. Edge is
-the bare URL, what a visitor actually gets. A site with a fast edge and a slow origin has a
-different problem from one with both slow, and a blended number hides which.
+with a unique cache-buster, which defeats any cache that varies on the query string — normally the
+edge. Edge is the bare URL, what a visitor actually gets. A site with a fast edge and a slow origin
+has a different problem from one with both slow, and a blended number hides which.
+
+Read the origin number for what it is: **a request that bypassed the query-varying caches**, not a
+proven PHP render. A page cache that ignores the query string, or an object cache warmed by an
+earlier request, can still serve part of it. `cache_status` reports what the answering layer said,
+and that is the evidence — not the cache-buster's presence.
 
 **Read [references/measurement-objectives.md](references/measurement-objectives.md) before
 choosing tools.** It states each objective, the capability it needs, and the known providers in

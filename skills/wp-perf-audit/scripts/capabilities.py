@@ -771,15 +771,24 @@ def determine_tier(
     """Return the highest locally exercised access tier signal."""
 
     if access["deploy_path"] is True:
+        # `medium`, not `high`, and the difference is the contract's own definition: confirmation
+        # means a capability was actually exercised, not merely configured. What was exercised here
+        # is that a writable checkout is a Git worktree with SOME remote configured. That is
+        # circumstantial for "a deploy would land": the remote may be unreachable, the credentials
+        # may be missing, and it may not be the path that owns production at all — on several
+        # managed hosts a later platform push overwrites direct edits. The confidence rubric calls
+        # that `medium`, and access-tiers.md already said so while this said `high`.
         evidence = [
             "probe: writable local WordPress Git checkout has a configured push remote at {}".format(
                 root.as_posix() if root is not None else UNKNOWN
-            )
+            ),
+            "probe: remote reachability, push credentials, and whether this remote owns production "
+            "were NOT exercised; confirm the authoritative deploy path before relying on tier 3",
         ]
         if local_binding_evidence is not None:
             evidence.append(local_binding_evidence)
         return {
-            "confidence": "high",
+            "confidence": "medium",
             "evidence": evidence,
             "name": TIER_NAMES[3],
             "value": 3,

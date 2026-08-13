@@ -148,7 +148,10 @@ transcript access, and a no-script fallback appropriate to the site.
 
 ### Host constraints
 
-No host-specific restriction applies.
+No host prohibits this fix class itself. The host's normal constraints on the change mechanism
+still apply — see `wp-perf-fix/references/host-constraints.md` before editing theme files,
+builder templates or plugin settings, because the deploy path that owns production varies by
+host and a later platform push can revert a direct edit.
 
 The media change may still require purging an `edge` or `server` cache layer and any transformed-media
 derivative. Do not assume that replacing the WordPress attachment invalidates a CDN URL with a different

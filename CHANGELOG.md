@@ -79,6 +79,20 @@ specification. Almost every entry is a defect that only appeared under real use.
   can expose private cart or order state. The observation survives as evidence — what was searched
   for, across how many pages — because "we looked and saw none" is useful; concluding `false` from
   it was not.
+- **Three claims that outran their evidence, corrected.** A unique cache-buster defeats caches
+  keyed on the query string; it does not prove PHP executed, so "every hit is a genuine miss"
+  became a statement of what the technique actually achieves, with `cache_status` named as the
+  evidence for how a request was served. `capabilities.py` reported tier 3 at `high` confidence
+  from a writable git checkout with *some* remote configured — which proves neither reachability,
+  nor credentials, nor that the remote owns production — and now reports `medium` and says what was
+  not exercised; `access-tiers.md` had documented that gap while the code contradicted it.
+- **Six catalog entries claimed "No host-specific restriction applies", and the entry template
+  instructed authors to write it.** A defect class can be host-neutral, but the change *mechanism*
+  is not: a WP Engine GitPush reverts direct edits to tracked files, Pantheon's Live code is
+  read-only, and several platforms own the cache drop-ins. The template was fixed first, since it
+  regenerates the claim on every new entry, and `check_skill_docs.py` now refuses the retired
+  sentence. Two uncited "are permitted" claims about named managed hosts became conditions to
+  confirm.
 - Code of conduct, issue templates, and a pull-request template.
 
 ### Verified
