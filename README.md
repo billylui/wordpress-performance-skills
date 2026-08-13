@@ -127,7 +127,7 @@ flowchart TD
     V["Visitor browser"] --> E["CDN / edge cache"]
     E -->|MISS| S["Server cache"]
     S -->|MISS| P["Page-cache plugin"]
-    P -->|MISS| W["WordPress PHP<br/>theme · builder · plugins"]
+    P -->|MISS| W["WordPress PHP — theme, builder, plugins"]
     W --> O["Object cache"]
     O -->|MISS| D[("MySQL / MariaDB")]
 ```
@@ -155,9 +155,9 @@ claims a finding it has no way to establish.
 
 ```mermaid
 flowchart LR
-    T0["Tier 0 · Public<br/>just a URL"] --> T1["Tier 1 · Admin<br/>+ wp-admin / REST"]
-    T1 --> T2["Tier 2 · CLI<br/>+ WP-CLI / SSH"]
-    T2 --> T3["Tier 3 · Code<br/>+ deploy path"]
+    T0["Tier 0 · Public — just a URL"] --> T1["Tier 1 · Admin — wp-admin / REST"]
+    T1 --> T2["Tier 2 · CLI — WP-CLI / SSH"]
+    T2 --> T3["Tier 3 · Code — deploy path"]
 ```
 
 *Each tier adds what the one before it could not see. Tier 0 needs no setup and no credentials at all.*
@@ -177,18 +177,18 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    F["Fingerprint<br/>what stack is this?"] --> M["Measure<br/>origin vs edge · CWV · payload"]
-    M --> A["Attribute<br/>rank by real impact"]
-    A --> G{"Host-constraint gate<br/>checks the host's<br/>published policy"}
-    G -->|prohibited| R["Refuse, route to<br/>the permitted path"]
-    G -->|permitted| ST{"Staging<br/>declared?"}
-    ST -->|yes| SG["Apply on staging<br/>confirm it is safe"]
-    ST -->|no| CC["Compensating controls<br/>reversible mechanism · syntax check<br/>rollback trigger"]
+    F["Fingerprint — what stack is this?"] --> M["Measure — origin vs edge, CWV, payload"]
+    M --> A["Attribute — rank by real impact"]
+    A --> G{"Host gate — the host's published policy"}
+    G -->|prohibited| R["Refuse — route to the permitted path"]
+    G -->|permitted| ST{"Staging declared?"}
+    ST -->|yes| SG["Apply on staging — confirm it is safe"]
+    ST -->|no| CC["Compensating controls — mechanism, syntax check, rollback trigger"]
     SG --> S["Snapshot"]
     CC --> S
-    S --> AP["Apply one change<br/>next in the queue"]
+    S --> AP["Apply one change — next in the queue"]
     AP --> PG["Purge the correct layer"]
-    PG --> V["Verify what the<br/>visitor actually received"]
+    PG --> V["Verify what the visitor received"]
     V --> M
 ```
 
