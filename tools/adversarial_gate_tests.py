@@ -145,6 +145,15 @@ def write_plan(tmp: pathlib.Path, *, site="https://example.com", tier=3,
             "direction": "decrease",
         },
         "rollback": "restore snap.bak",
+        # A code change on a site with no declared staging must say how that is being managed.
+        # Included by default because it is the common real case — most WordPress sites have no
+        # staging — so every unrelated control below stays about the guard it is actually testing.
+        # Cases that exercise the ABSENCE of a staging story clear this explicitly.
+        "compensating_controls": {
+            "mechanism": "small mu-plugin rather than functions.php",
+            "verification": "php -l, then a visitor GET of the homepage",
+            "rollback_trigger": "5xx or WordPress's critical-error page",
+        },
     }
     change.update(over.pop("change", {}))
     plan = {
@@ -264,6 +273,70 @@ def main() -> int:
             "snapshot": {"required": True, "artifact": str(tmp / "not-yet.bak")}})
         expect_exit("preflight accepts a plan pending approval+snapshot", [VALIDATE, pending, "--preflight", "--quiet"], 0)
         expect_exit("execution mode refuses that same plan", [VALIDATE, pending, "--quiet"], 1)
+
+        print("\n=== validate_plan.py — staging changes the process, never whether work proceeds ===")
+        # Staging is a capability, not a precondition: most WordPress sites have none, and refusing
+        # to work on them would make this skill unused rather than safe. What is refused is a CODE
+        # change with neither staging nor a stated plan for surviving without one, because a PHP
+        # fatal there takes the whole site down. Taxonomy row WP-ESC-10.
+        controls = {"mechanism": "small mu-plugin rather than functions.php",
+                    "verification": "php -l, then a visitor GET of the homepage",
+                    "rollback_trigger": "5xx or WordPress's critical-error page"}
+        staged = {"url": "https://staging.example.com",
+                  "confirmed_by": "MyKinsta staging environment for this site, seen in the panel"}
+
+        def code_plan(**over) -> pathlib.Path:
+            return write_plan(tmp, tier=3, **over)
+
+        def db_plan(**over) -> pathlib.Path:
+            change = {"target": {"kind": "wp-option", "identifier": "some_option"},
+                      "risk_lane": "direct"}
+            change.update(over.pop("change", {}))
+            return write_plan(tmp, tier=2, change=change, **over)
+
+        expect_exit("a code change with no staging and no stated controls is refused",
+                    [VALIDATE, code_plan(change={"compensating_controls": None}),
+                     "--preflight", "--quiet"], 1)
+        expect_exit("CONTROL: the same change with declared staging is accepted",
+                    [VALIDATE, code_plan(staging=staged, change={"compensating_controls": None}),
+                     "--preflight", "--quiet"], 0)
+        expect_exit("CONTROL: the same change with full compensating controls is accepted",
+                    [VALIDATE, code_plan(change={"compensating_controls": controls}),
+                     "--preflight", "--quiet"], 0)
+        expect_exit("staging declared without a checkable confirmation is refused",
+                    [VALIDATE, code_plan(staging={"url": "https://staging.example.com"},
+                                         change={"compensating_controls": None}),
+                     "--preflight", "--quiet"], 1)
+        expect_exit("partially stated controls are not controls",
+                    [VALIDATE, code_plan(change={"compensating_controls": {"mechanism": "careful"}}),
+                     "--preflight", "--quiet"], 1)
+        # A database change is reversible by setting the value back, and its snapshot already holds
+        # the prior value — gating it on staging would refuse most performance work for no gain.
+        expect_exit("CONTROL: a database change needs no staging at all",
+                    [VALIDATE, db_plan(), "--preflight", "--quiet"], 0)
+
+        print("\n=== validate_plan.py — a multi-change plan is a queue, not a pile ===")
+        # `changes` is executed one at a time. Several are legitimate, because performance work has
+        # real dependencies. What is refused is an unordered pile: a queue nobody sequenced.
+        two = [
+            {"id": "c1", "summary": "first", "catalog_entry": "frontend/fonts-preloaded-unused.md",
+             "risk_lane": "direct", "target": {"kind": "wp-option", "identifier": "a"},
+             "snapshot": {"required": True, "artifact": str(tmp / "snap.bak")},
+             "approval": {"required": True, "granted": True}, "purge_layers": ["page-plugin"],
+             "expected_effect": {"metric": "total_kb", "url": "https://example.com/",
+                                 "direction": "decrease"}, "rollback": "restore"},
+        ]
+        second = json.loads(json.dumps(two[0])); second["id"] = "c2"
+        expect_exit("two queued changes with no stated ordering are refused",
+                    [VALIDATE, write_plan(tmp, tier=2, changes=two + [second]),
+                     "--preflight", "--quiet"], 1)
+        expect_exit("CONTROL: the same two with a sequence_rationale are accepted",
+                    [VALIDATE, write_plan(tmp, tier=2, changes=two + [second],
+                                          sequence_rationale="Purge configuration first, so the "
+                                          "second change is measured against a clean cache."),
+                     "--preflight", "--quiet"], 0)
+        expect_exit("CONTROL: a single change needs no rationale",
+                    [VALIDATE, write_plan(tmp, tier=2, changes=two), "--preflight", "--quiet"], 0)
 
         print("\n=== validate_plan.py — the host's own policy, not the plan's label ===")
         # Until this gate existed, the refusal the whole skill advertises was a LABEL check: a

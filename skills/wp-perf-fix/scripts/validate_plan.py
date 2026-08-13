@@ -163,6 +163,17 @@ MINIMUM_RISK_LANE_BY_TARGET_KIND: Mapping[str, str] = {
     "theme-file": "staging-first",
     "wp-option": "direct",
 }
+# Change kinds that live in files, so staging can be promoted by pushing FILES ONLY. Everything
+# else lives in the database and must be RE-APPLIED on production: Kinsta documents that a
+# database push loses "comments, new content, purchases on ecommerce sites, sign-ups on membership
+# sites, and forum posts" made since the staging copy. A page-speed win is not worth lost orders,
+# and a large share of performance fixes are database changes.
+FILE_BACKED_TARGET_KINDS = ("theme-file", "plugin-file", "mu-plugin")
+# A code change with no staging is the one real risk here: a PHP fatal takes the whole site down.
+# It is still permitted — most WordPress sites have no staging, and refusing would make the skill
+# unusable rather than safe — but the plan must say which compensating controls were applied.
+COMPENSATING_CONTROL_KEYS = ("mechanism", "verification", "rollback_trigger")
+
 # The machine-readable half of host-constraints.md, loaded from the skill's own references/ so an
 # installed copy carries it. tools/check_host_policy.py fails the build if the two ever disagree.
 HOST_POLICY_FILENAME = "host-policy.json"
@@ -705,6 +716,89 @@ def validate_risk_lane(
         )
 
 
+def has_compensating_controls(value: Any) -> bool:
+    """Accept only a fully stated set of controls, never a bare assertion of care."""
+
+    if not isinstance(value, dict):
+        return False
+    return all(is_non_empty_string(value.get(key)) for key in COMPENSATING_CONTROL_KEYS)
+
+
+def validate_staging(
+    change: Mapping[str, Any],
+    change_id: str,
+    plan_staging: Any,
+    problems: List[Problem],
+) -> None:
+    """Require staging OR stated compensating controls for a code change — never neither.
+
+    Staging is a capability, not a precondition. Most WordPress sites have none, and refusing to
+    work on them would make this skill unused rather than safe; the audit side already settled the
+    same question by treating tier 0 as complete rather than degraded.
+
+    So this never refuses a change for lacking staging. It refuses a code change that has neither
+    staging nor a stated plan for surviving without it, because that combination is how a PHP fatal
+    reaches a production site nobody could roll back quickly.
+
+    Deliberately scoped to file-backed targets. A `wp-option` or `plugin-setting` change is
+    reversible by setting the value back, and its snapshot already captures the prior value.
+    """
+
+    target = change.get("target")
+    kind = target.get("kind") if isinstance(target, dict) else None
+    if kind not in FILE_BACKED_TARGET_KINDS:
+        return
+
+    declared = isinstance(plan_staging, dict) and is_non_empty_string(plan_staging.get("url"))
+    if declared:
+        if not is_non_empty_string(plan_staging.get("confirmed_by")):
+            add_problem(
+                problems,
+                change_id,
+                "staging",
+                "staging.url is declared but staging.confirmed_by is empty. Name something a human "
+                "could check — a control-panel environment, a host support response, or how the "
+                "operator created it. Nothing observable from outside proves a URL is this site's "
+                "staging environment, and being wrong points this write at another installation.",
+            )
+        return
+
+    if has_compensating_controls(change.get("compensating_controls")):
+        return
+
+    add_problem(
+        problems,
+        change_id,
+        "staging",
+        "target.kind {!r} changes code on a site with no declared staging, and the change states no "
+        "compensating controls. This is not a refusal of the work — most WordPress sites have no "
+        "staging — but a PHP fatal here takes the whole site down, so say how that is being managed: "
+        "compensating_controls needs {}. Check first whether the host provides one-click staging; "
+        "several managed hosts do. See references/staging.md.".format(
+            kind, ", ".join(repr(key) for key in COMPENSATING_CONTROL_KEYS)
+        ),
+    )
+
+
+def validate_plan_sequence_rationale(document: Mapping[str, Any], problems: List[Problem]) -> None:
+    """Require a stated ordering when a plan queues more than one change."""
+
+    changes = document.get("changes")
+    if not isinstance(changes, list) or len(changes) < 2:
+        return
+    if is_non_empty_string(document.get("sequence_rationale")):
+        return
+    add_problem(
+        problems,
+        "plan",
+        "sequence",
+        "this plan queues {} changes but has no sequence_rationale. The queue is executed one "
+        "change at a time, so the order is a decision: say why this one — what each change depends "
+        "on, and what would be mis-attributed if they ran in another order. A plan with several "
+        "changes and no stated reasoning is an unordered pile.".format(len(changes)),
+    )
+
+
 def load_host_policy() -> Mapping[str, Any]:
     """Load the machine-readable host policy, or refuse the run.
 
@@ -853,6 +947,7 @@ def validate_change(
     problems: List[Problem],
     plan_host_class: Any = None,
     host_policy: Optional[Mapping[str, Any]] = None,
+    plan_staging: Any = None,
 ) -> Optional[str]:
     if not isinstance(change, dict):
         change_id = "changes[{}]".format(index)
@@ -912,6 +1007,8 @@ def validate_change(
     validate_risk_lane(change, change_id, problems)
 
     validate_host_policy(change, change_id, plan_host_class, host_policy, problems)
+
+    validate_staging(change, change_id, plan_staging, problems)
 
     validate_snapshot(
         change,
@@ -1394,6 +1491,7 @@ def validate_plan(
                 problems,
                 document.get("host_class"),
                 host_policy,
+                document.get("staging"),
             )
             if usable_id is None:
                 continue
@@ -1408,6 +1506,8 @@ def validate_plan(
                 )
             else:
                 seen_ids[usable_id] = index
+
+    validate_plan_sequence_rationale(document, problems)
 
     if stack is not None:
         cross_check_stack(document, stack, problems)

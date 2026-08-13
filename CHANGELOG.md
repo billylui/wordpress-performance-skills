@@ -93,6 +93,24 @@ specification. Almost every entry is a defect that only appeared under real use.
   regenerates the claim on every new entry, and `check_skill_docs.py` now refuses the retired
   sentence. Two uncited "are permitted" claims about named managed hosts became conditions to
   confirm.
+- **Staging is a capability, not a precondition.** It was never checked anywhere — not detected,
+  not in the schema, not in the validator — while the skill said to "say so and stop" without it.
+  Both halves were wrong: nothing enforced the rule, and the rule would have made the skill
+  unusable on the majority of WordPress sites, which have no staging. `capabilities.py` gains
+  `--staging-url` (declared, never inferred), and `validate_plan.py` refuses a **code** change that
+  has neither staging nor stated `compensating_controls` — not for lacking staging, but for having
+  no answer to how a PHP fatal would be survived. Database-backed changes are exempt: the snapshot
+  already holds the prior value.
+- **Staging proves safety, not speed**, and the difference is now written down. Managed staging
+  commonly runs with page cache and OPcache disabled, so a before/after measured there is not
+  evidence about production; the scorecard measurement always happens on production, warm.
+  Promotion also depends on where a change lives — files are pushed, database changes are
+  **re-applied**, because a database push discards everything written to the live site since the
+  staging copy, including orders. `references/staging.md` carries this with its sources.
+- **`changes` is a serial queue, and says why it is in that order.** A plan may carry several —
+  performance work has real dependencies — but they execute strictly one at a time, and a plan with
+  more than one now states `sequence_rationale`. Previously a two-change plan passed with no
+  ordering stated at all, and the documents supported two different readings of what that meant.
 - Code of conduct, issue templates, and a pull-request template.
 
 ### Verified
