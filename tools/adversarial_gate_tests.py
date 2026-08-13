@@ -709,6 +709,21 @@ def main() -> int:
            "the code the breaker counts is curl's timeout code",
            f"CURL_TIMEOUT_CODE={probe.CURL_TIMEOUT_CODE}")
 
+    # The sizing pool runs several requests at once, so three can time out and open the circuit
+    # while a fourth to the same host is still in flight — and then answers. Leaving the circuit
+    # open there keeps skipping a host just watched responding, and understates the payload for
+    # the rest of the run. Found by review; the counter reset alone did not close the circuit.
+    probe.BREAKER.reset()
+    for _ in range(probe.HOST_TIMEOUT_CIRCUIT_LIMIT):
+        probe.BREAKER.record_outcome(dead, True)
+    record(probe.BREAKER.is_open(dead),
+           "CONTROL: the circuit is open before the in-flight reply arrives",
+           f"open={probe.BREAKER.is_open(dead)}")
+    probe.BREAKER.record_outcome(dead, False)
+    record(not probe.BREAKER.is_open(dead),
+           "an in-flight request that answers CLOSES the circuit again",
+           f"open={probe.BREAKER.is_open(dead)} after the host demonstrably replied")
+
     # Nothing skipped may be counted as zero bytes — that would turn a dead host into a quietly
     # smaller page, which is the exact failure the payload totals rule exists to prevent.
     probe.BREAKER.reset()
