@@ -124,11 +124,18 @@ Core Web Vitals thresholds, evaluated at the **75th percentile of field data**:
 
 | Metric | Good | Needs improvement | Poor |
 |---|---|---|---|
-| LCP | < 2.5 s | 2.5 – 4.0 s | > 4.0 s |
-| INP | < 200 ms | 200 – 500 ms | > 500 ms |
-| CLS | < 0.1 | 0.1 – 0.25 | > 0.25 |
+| LCP | 2.5 s or less | above 2.5 s, up to 4.0 s | above 4.0 s |
+| INP | 200 ms or less | above 200 ms, up to 500 ms | above 500 ms |
+| CLS | 0.1 or less | above 0.1, up to 0.25 | above 0.25 |
 
-The rating vocabulary is closed: `good`, `needs-improvement`, `poor`, or `—`.
+**The good boundary is inclusive.** The published definitions read "200 milliseconds or less" and
+"0.1 or less", so a metric landing exactly on 2.5 s, 200 ms or 0.1 is `good`, not
+`needs-improvement`. Written as `< 2.5 s` this is easy to get backwards, and the checker did until
+a review compared the wording against the source.
+
+The rating vocabulary is closed: `good`, `needs-improvement`, `poor`, or `—`. An ASCII `-` is
+accepted wherever `—` is, because the em dash is awkward to type on many keyboards and a hyphen in
+a Rating column is unambiguous. What matters is that no rating was claimed.
 
 Sources: [web.dev Core Web Vitals](https://web.dev/articles/vitals) ·
 [Lighthouse scoring](https://github.com/GoogleChrome/lighthouse/blob/main/docs/v8-perf-faq.md).
@@ -195,6 +202,12 @@ python3 "$SKILL_DIR/scripts/check_report.py" report.md
 It reports every violation at once, and its messages name what a conforming report would look like —
 the expected rows, the expected section order, the permitted rating words — so a failure is
 actionable without reading this file again.
+
+It also refuses a draft that still carries `{{PLACEHOLDER}}` slots anywhere, not only in the
+scorecard. A report copied from the template with just the numbers filled in is not finished, and
+publishing on a clean exit would otherwise hand an operator a half-written document the checker had
+blessed. And when a fix run fills in `## Result`, that table must carry the same ten rows the
+scorecard does — a metric that did not move is the result an operator most needs to see.
 
 Treat it as a loop, not a gate at the end: draft, check, fix what it names, check again, and publish
 only on a clean run. A non-zero exit means the report is not finished.
