@@ -90,6 +90,11 @@ target, declare it:
 python3 "$SKILL_DIR/scripts/capabilities.py" --target <URL> --local-root /path/to/wordpress
 ```
 
+Declare a staging environment the same way, if one exists — `--staging-url <URL>`. It is never
+inferred, and its absence is a normal state rather than a problem: it changes how `wp-perf-fix`
+applies a change, not whether the audit can proceed. Worth asking about, because several managed
+hosts include one-click staging that the operator may not have used.
+
 Tier 0 (a public URL, no credentials) is a complete audit of the frontend and cache layers — not
 a degraded mode. See [references/access-tiers.md](references/access-tiers.md) for what each tier
 adds and how to ask for more without pushing.
