@@ -6,4 +6,5 @@ Open work carried across sessions. One file per topic. Close an item by flipping
 
 | Handoff | Status | Summary |
 |---|---|---|
+| [host-policy-gate.md](host-policy-gate.md) | OPEN | Scope for making the documented hard gates real — the host gate never reads the host constraints, staging existence is never checked, and one more is unreconciled. Blocks launch |
 | [pre-publication.md](pre-publication.md) | OPEN | What remains before making the repository public, and what is deliberately deferred past v0.1 |
