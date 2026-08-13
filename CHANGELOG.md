@@ -69,6 +69,16 @@ specification. Almost every entry is a defect that only appeared under real use.
   real sites. It can never override a published prohibition.
 - `tools/check_host_policy.py` fails the build if the policy table and its human document drift,
   if a host is missing from either, or if a permissive verdict cites nothing.
+- **Absence of a public marker is now `unknown`, not a negative claim.** `fingerprint.py`
+  reported `woocommerce: false`, `multilingual: none` and `is_wordpress: false` at medium
+  confidence when it found nothing — contradicting the invariant this project calls its most
+  important. A CDN, an optimizer or a headless front end strips markers from sites that
+  unmistakably have the thing, and a crawl of a few pages never reaches most of a site. The
+  WooCommerce case had the clearest harm path: the catalog already warned that a false result
+  "does not prove that no store exists", and that brochure-site caching advice applied to a store
+  can expose private cart or order state. The observation survives as evidence — what was searched
+  for, across how many pages — because "we looked and saw none" is useful; concluding `false` from
+  it was not.
 - Code of conduct, issue templates, and a pull-request template.
 
 ### Verified
