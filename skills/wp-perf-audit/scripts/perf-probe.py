@@ -865,7 +865,23 @@ def discover_resources(
         pending = []
         for css_url in sorted(current):
             fetched_css.add(css_url)
+            # Discovery is serial and runs BEFORE any sizing, so a dead host reached here pays the
+            # full timeout per stylesheet with nothing to stop it. That is not a hypothetical: the
+            # audit this breaker was built for stalled on font CSS pointing at a staging domain
+            # that resolved and never answered. Gating only the sizing pool would have missed the
+            # exact path that caused it.
+            css_host = host_of(css_url)
+            if BREAKER.is_open(css_host):
+                BREAKER.record_skip(css_host)
+                errors.append(
+                    "CSS discovery skipped for {}: host {} stopped answering".format(
+                        css_url, css_host
+                    )
+                )
+                discovery_incomplete = True
+                continue
             result = fetch_text(curl_binary, css_url)
+            BREAKER.record_outcome(css_host, result["returncode"] == CURL_TIMEOUT_CODE)
             if result["returncode"] != 0:
                 errors.append(
                     "CSS discovery failed for {}: {}".format(css_url, result["error"])

@@ -119,7 +119,8 @@ whenever a finding bottoms out in the backend.
 ## Which layer is your problem on?
 
 This is the question that makes WordPress performance confusing, and the reason generic web-perf
-advice so often misfires. A request passes through up to six caches before any PHP runs:
+advice so often misfires. A request can pass through three caching layers before any PHP runs — edge,
+server, page-plugin — and two more inside the request, after it:
 
 ```mermaid
 flowchart TD
@@ -166,7 +167,7 @@ flowchart LR
 | **0 · Public** | a URL | Core Web Vitals, payload, render-blocking resources, origin-vs-edge TTFB, the full stack fingerprint | nothing — reports only |
 | **1 · Admin** | + wp-admin / REST | + plugin and theme inventory, active caching stack | settings, plugin config, media |
 | **2 · CLI** | + WP-CLI / SSH | + profiling, autoload bloat, slow queries, cron, object cache | + WP-CLI-driven config |
-| **3 · Code** | + a deploy path | + theme and plugin source attribution | + code, staging-first |
+| **3 · Code** | + a deploy path | + theme and plugin source attribution | + code, staging-first where staging exists |
 
 **Tier 0 is a complete, honest audit of any WordPress site with zero setup.** That is the point.
 
@@ -175,13 +176,17 @@ flowchart LR
 ## How a session runs
 
 ```mermaid
-flowchart LR
+flowchart TD
     F["Fingerprint<br/>what stack is this?"] --> M["Measure<br/>origin vs edge · CWV · payload"]
     M --> A["Attribute<br/>rank by real impact"]
-    A --> G{"Host-constraint<br/>gate"}
-    G -->|permitted| S["Snapshot"]
-    G -->|banned by host| R["Refuse, route to<br/>the permitted path"]
-    S --> AP["Apply one change"]
+    A --> G{"Host-constraint gate<br/>checks the host's<br/>published policy"}
+    G -->|prohibited| R["Refuse, route to<br/>the permitted path"]
+    G -->|permitted| ST{"Staging<br/>declared?"}
+    ST -->|yes| SG["Apply on staging<br/>confirm it is safe"]
+    ST -->|no| CC["Compensating controls<br/>reversible mechanism · syntax check<br/>rollback trigger"]
+    SG --> S["Snapshot"]
+    CC --> S
+    S --> AP["Apply one change<br/>next in the queue"]
     AP --> PG["Purge the correct layer"]
     PG --> V["Verify what the<br/>visitor actually received"]
     V --> M
@@ -189,10 +194,19 @@ flowchart LR
 
 *Fingerprint first, so every later step knows which stack it is standing on. Measure, attribute,
 then gate: on managed hosts that ban caching plugins, "install WP Rocket" is not merely unhelpful
-advice — hosts that publish a disallowed list remove such plugins, and the gate refuses it.
-Every applied change gets a
-rollback snapshot, a purge on the layer that actually holds the stale copy, and a verification
-against what a real visitor receives. Then it measures again.*
+advice — hosts that publish a disallowed list remove such plugins, and the gate refuses it by
+checking a cited policy table rather than trusting the plan.*
+
+*Staging then shapes the process without deciding whether work happens. **Most WordPress sites have
+no staging**, and a skill that refuses to work on them is unused rather than safe — so its absence
+raises the evidence required instead of stopping the run. Staging proves a change is **safe**; it
+cannot prove one is **faster**, because managed staging commonly runs with page cache and OPcache
+switched off. The before/after measurement always happens on production, warm.*
+
+*Every applied change gets a rollback snapshot, a purge on the layer that actually holds the stale
+copy, and a verification against what a real visitor receives. A plan may queue several changes —
+performance work has dependencies — but they execute strictly one at a time, and the plan has to say
+why that order.*
 
 ---
 

@@ -93,6 +93,33 @@ specification. Almost every entry is a defect that only appeared under real use.
   regenerates the claim on every new entry, and `check_skill_docs.py` now refuses the retired
   sentence. Two uncited "are permitted" claims about named managed hosts became conditions to
   confirm.
+- **Staging is a capability, not a precondition.** It was never checked anywhere — not detected,
+  not in the schema, not in the validator — while the skill said to "say so and stop" without it.
+  Both halves were wrong: nothing enforced the rule, and the rule would have made the skill
+  unusable on the majority of WordPress sites, which have no staging. `capabilities.py` gains
+  `--staging-url` (declared, never inferred), and `validate_plan.py` refuses a **code** change that
+  has neither staging nor stated `compensating_controls` — not for lacking staging, but for having
+  no answer to how a PHP fatal would be survived. Database-backed changes are exempt: the snapshot
+  already holds the prior value.
+- **Staging proves safety, not speed**, and the difference is now written down. Managed staging
+  commonly runs with page cache and OPcache disabled, so a before/after measured there is not
+  evidence about production; the scorecard measurement always happens on production, warm.
+  Promotion also depends on where a change lives — files are pushed, database changes are
+  **re-applied**, because a database push discards everything written to the live site since the
+  staging copy, including orders. `references/staging.md` carries this with its sources.
+- **`changes` is a serial queue, and says why it is in that order.** A plan may carry several —
+  performance work has real dependencies — but they execute strictly one at a time, and a plan with
+  more than one now states `sequence_rationale`. Previously a two-change plan passed with no
+  ordering stated at all, and the documents supported two different readings of what that meant.
+- **Four gates that could be bypassed, or were never enforced.** An independent review of the
+  whole session found them; each was reproduced before being fixed. The host-policy gate matched
+  only a bare plugin slug, so `wp-rocket/wp-rocket.php` — the identifier WordPress itself stores in
+  `active_plugins` — passed straight through it on a host that bans page caches. `staging.url`
+  accepted any non-empty string, including the production URL, which would let a "staging-first"
+  change run against production while appearing staged. The circuit breaker never covered
+  stylesheet **discovery**, which is serial and runs before sizing — the exact path that caused the
+  stall it was built for. And the adversarial suite had **never run in CI**, while `docs/TESTING.md`
+  declared it an always-on row: every lock in it was unenforced.
 - Code of conduct, issue templates, and a pull-request template.
 
 ### Verified

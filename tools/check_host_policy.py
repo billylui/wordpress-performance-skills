@@ -68,6 +68,25 @@ def contract_host_classes(text: str) -> list:
     return sorted(listed)
 
 
+def leading_verdict(row: str) -> str:
+    """Return the first verdict phrase in a summary row, which is the row's actual verdict.
+
+    A row states its verdict first and then qualifies it. Reading the whole row lets a weakened
+    transcription hide behind a qualifying clause, so only the first cell up to its first sentence
+    boundary counts.
+    """
+
+    if not row:
+        return ""
+    first_cell = row.split("|", 1)[0]
+    # Verdicts are emphasised, and the first emphasised run is the verdict itself.
+    for sentence in re.split(r"(?<=\.)\s", first_cell):
+        stripped = sentence.strip()
+        if stripped:
+            return stripped
+    return first_cell.strip()
+
+
 def prose_rows(text: str) -> dict:
     """Return each host's summary-table row from the prose document."""
 
@@ -124,7 +143,12 @@ def main() -> int:
                 )
             )
             continue
-        row = rows.get(host, "")
+        # Match the row's LEADING verdict, not any keyword anywhere in it. Several rows name a
+        # second verdict in a qualifying clause — bluehost reads "PROHIBITED for products covered
+        # by … For every other product, UNCONFIRMABLE" — so "contains the word" could not tell a
+        # faithful transcription from a weakened one, and flipping bluehost to `unconfirmable`
+        # (which lets operator confirmation override it) passed silently.
+        row = leading_verdict(rows.get(host, ""))
         if row and not any(keyword.lower() in row.lower() for keyword in keywords):
             problems.append(
                 "{}: {} says {!r} but the summary table row does not contain any of {}. One of "
