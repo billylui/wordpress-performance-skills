@@ -30,9 +30,23 @@ templates, five Mermaid diagrams. License is detected as GPL-2.0. Wiki and Proje
 
 ## Open items
 
-### 1. The repository is still PRIVATE
+### 1. The repository is PUBLIC — done
 
-Making it public is a publishing decision that has not been taken. Nothing technical blocks it.
+Published at [github.com/billylui/wordpress-performance-skills](https://github.com/billylui/wordpress-performance-skills),
+GPL-2.0, issues open, wiki disabled.
+
+Before publishing, the git history was rewritten to remove the client's repository name from two
+commit messages. The tree hash was byte-identical before and after, so only messages changed, and
+the full suite plus CI were re-run on the rewritten history. This mattered because
+[../case-study-anonymized.md](../case-study-anonymized.md) opens with "The site is not named and
+never will be", and the repository's own history contradicted it.
+
+**One honest limit.** GitHub can retain pre-rewrite objects, reachable by their exact commit SHA,
+and those SHAs were created while the repository was private. The exposure is a repository name
+rather than a credential, and finding it requires already knowing a 40-character hash, so this was
+judged proportionate rather than worth recreating the repository. If that judgement ever needs
+revisiting, the options are asking GitHub Support to garbage-collect unreachable objects, or
+pushing the clean history into a fresh repository.
 
 ### 2. `wp-perf-fix` has never run against a production host
 
