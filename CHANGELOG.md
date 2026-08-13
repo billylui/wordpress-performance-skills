@@ -57,6 +57,22 @@ specification. Almost every entry is a defect that only appeared under real use.
   scripts describe different pages.
 - Code of conduct, issue templates, and a pull-request template.
 
+### Verified
+
+- **A second harness now runs the audit end to end.** Both skills were installed to another
+  agent's skills directory, validated in place, and `wp-perf-audit` completed a tier-0 audit of a
+  live production WordPress site there — a different harness on a different vendor's model, given
+  only a plain-language request naming the skill and told nothing about how to run it. It
+  resolved the skill directory through the documented discovery loop, ran the scripts in order,
+  reported origin and edge TTFB separately, produced every mandatory report section in order, and
+  ran the report checker on its own draft. All ten scorecard rows were present; the six the
+  session could not measure each carried their own reason rather than one blanket line, and no
+  rating was invented for any of them.
+- The same run in that agent's default sandbox, which has no outbound DNS, reported the
+  environment as the blocker instead of labelling the site unreachable, and fabricated no
+  metrics — the behaviour the `compatibility` field exists to produce, observed for the first
+  time.
+
 ### Changed
 
 - **`host_class` is the operator's declaration; the fingerprint is a contradiction check.**
