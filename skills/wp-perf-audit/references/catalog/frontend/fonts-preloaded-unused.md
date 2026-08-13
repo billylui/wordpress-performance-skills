@@ -154,7 +154,10 @@ that later, and it does not solve the ownership or usage error.
 
 ### Host constraints
 
-No host-specific restriction applies.
+No host prohibits this fix class itself. The host's normal constraints on the change mechanism
+still apply — see `wp-perf-fix/references/host-constraints.md` before editing theme files,
+builder templates or plugin settings, because the deploy path that owns production varies by
+host and a later platform push can revert a direct edit.
 
 After changing builder, theme, plugin, or code output, purge every active `edge`, `server`, and
 `page-plugin` cache layer reported by `fingerprint.py`. Do not install a cache or font plugin as

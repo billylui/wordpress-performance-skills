@@ -148,7 +148,10 @@ content when JavaScript fails. Simply not animating the LCP element is cleaner.
 
 ### Host constraints
 
-No host-specific restriction applies.
+No host prohibits this fix class itself. The host's normal constraints on the change mechanism
+still apply — see `wp-perf-fix/references/host-constraints.md` before editing theme files,
+builder templates or plugin settings, because the deploy path that owns production varies by
+host and a later platform push can revert a direct edit.
 
 Purge every active `edge`, `server`, and `page-plugin` cache layer reported by `fingerprint.py`
 after the configuration or asset change. Do not install or replace a caching plugin as part of
