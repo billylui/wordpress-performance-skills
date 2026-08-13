@@ -125,7 +125,7 @@ Produced by `fingerprint.py`. Consumed by both skills to decide which catalog se
     "host_class":    { "value": "wpengine",         "confidence": "high",   "evidence": ["..."] },
     "cdn":           { "value": "cloudflare",       "confidence": "high",   "evidence": ["..."] },
     "multilingual":  { "value": "none",             "confidence": "medium", "evidence": ["..."] },
-    "woocommerce":   { "value": false,              "confidence": "medium", "evidence": ["..."] },
+    "woocommerce":   { "value": "unknown",          "confidence": "none",   "evidence": ["..."] },
     "multisite":     { "value": "unknown",          "confidence": "none",   "evidence": [] }
   },
   "cache_layers": [
@@ -148,6 +148,14 @@ Rules:
   makes two profiles diffable.
 - `is_wordpress`, `woocommerce` carry booleans or the string `"unknown"`; everything else is a
   string.
+- **A negative verdict needs evidence of absence, not absence of evidence.** Finding no public
+  marker yields `"unknown"`, never `false` or `"none"`. A CDN, an optimizer or a headless front end
+  strips markers from sites that unmistakably have the thing, and a crawl of a few pages never
+  reaches most of a site. This is invariant 3 applied in the direction it is easiest to forget:
+  `woocommerce: false` on a real store leads to brochure-site caching advice, which this project's
+  own catalog warns can expose private cart or order state. The observation is still reported —
+  the evidence string says what was looked for and across how many pages — because *"we looked and
+  saw none"* is useful. Concluding `false` from it is not.
 - `notes` explains *why* something is unknown when the reason is itself informative. This is
   what lets the agent say "the host strips this header" instead of silently omitting it.
 
