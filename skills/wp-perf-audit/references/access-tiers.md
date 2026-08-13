@@ -157,10 +157,12 @@ to deploy. Confirm the actual workflow and rollback artifact before changing pro
 - External systems, proprietary edge configuration, or infrastructure not represented in the
   checkout or available control plane.
 
-`capabilities.py` currently confirms `code` only for a writable local WordPress Git checkout with a
-configured remote. Its evidence does not prove remote reachability or push credentials, and it does
-not exercise rsync/SFTP. Treat a different deploy path as confirmed only after the authorized
-session actually exercises it.
+`capabilities.py` confirms `code` only for a writable local WordPress Git checkout with a
+configured remote, and reports it at **`medium` confidence** for exactly that reason: its evidence
+does not prove remote reachability or push credentials, does not establish that this remote is the
+path that owns production, and does not exercise rsync/SFTP. The tier value says what kind of access
+appears to exist; the confidence says how far it was actually proven. Treat any deploy path as
+confirmed only after the authorized session exercises it.
 
 ## How to ask for the next tier
 

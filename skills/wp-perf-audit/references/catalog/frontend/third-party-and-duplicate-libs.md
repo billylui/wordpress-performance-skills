@@ -154,7 +154,10 @@ Use the smallest fix for the proven mechanism:
 
 ### Host constraints
 
-No host-specific restriction applies.
+No host prohibits this fix class itself. The host's normal constraints on the change mechanism
+still apply — see `wp-perf-fix/references/host-constraints.md` before editing theme files,
+builder templates or plugin settings, because the deploy path that owns production varies by
+host and a later platform push can revert a direct edit.
 
 The change may live outside WordPress when a tag-manager or vendor account owns it. That is an access
 constraint, not a hosting restriction. If cache or script-optimization settings are also changed, check

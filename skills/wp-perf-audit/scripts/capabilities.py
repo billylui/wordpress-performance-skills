@@ -771,15 +771,24 @@ def determine_tier(
     """Return the highest locally exercised access tier signal."""
 
     if access["deploy_path"] is True:
+        # `medium`, not `high`, and the difference is the contract's own definition: confirmation
+        # means a capability was actually exercised, not merely configured. What was exercised here
+        # is that a writable checkout is a Git worktree with SOME remote configured. That is
+        # circumstantial for "a deploy would land": the remote may be unreachable, the credentials
+        # may be missing, and it may not be the path that owns production at all — on several
+        # managed hosts a later platform push overwrites direct edits. The confidence rubric calls
+        # that `medium`, and access-tiers.md already said so while this said `high`.
         evidence = [
             "probe: writable local WordPress Git checkout has a configured push remote at {}".format(
                 root.as_posix() if root is not None else UNKNOWN
-            )
+            ),
+            "probe: remote reachability, push credentials, and whether this remote owns production "
+            "were NOT exercised; confirm the authoritative deploy path before relying on tier 3",
         ]
         if local_binding_evidence is not None:
             evidence.append(local_binding_evidence)
         return {
-            "confidence": "high",
+            "confidence": "medium",
             "evidence": evidence,
             "name": TIER_NAMES[3],
             "value": 3,
@@ -870,7 +879,11 @@ def measurement_boundaries(
     return can_measure, cannot_measure, notes
 
 
-def build_profile(target: Optional[str], local_root_declared: Optional[Path] = None) -> Dict[str, object]:
+def build_profile(
+    target: Optional[str],
+    local_root_declared: Optional[Path] = None,
+    staging_url: Optional[str] = None,
+) -> Dict[str, object]:
     """Build one complete capability-profile document."""
 
     tools, notes = probe_tools()
@@ -965,6 +978,24 @@ def build_profile(target: Optional[str], local_root_declared: Optional[Path] = N
     can_measure, cannot_measure, boundary_notes = measurement_boundaries(access, tools)
     notes.extend(boundary_notes)
 
+    # Declared, never inferred, and never a gate. Its presence changes how a fix is applied — see
+    # wp-perf-fix/references/staging.md — and its absence changes the evidence required around one,
+    # not whether the work may happen. Most WordPress sites have no staging.
+    if staging_url:
+        staging = {"declared": True, "url": staging_url}
+        notes.append(
+            "Staging declared at {}. It can prove a change is SAFE; it cannot prove a change is "
+            "FASTER — managed staging commonly runs with page cache and OPcache disabled, so the "
+            "before/after measurement still happens on production, warm.".format(staging_url)
+        )
+    else:
+        staging = {"declared": False, "url": UNKNOWN}
+        notes.append(
+            "No staging environment was declared. This does not block a fix; it raises the "
+            "evidence required around a code change. Many managed hosts include one-click staging, "
+            "so confirm with the host before concluding the site has none."
+        )
+
     return {
         "access": dict(sorted(access.items())),
         "can_measure": can_measure,
@@ -972,6 +1003,7 @@ def build_profile(target: Optional[str], local_root_declared: Optional[Path] = N
         "generated_at": utc_timestamp(),
         "notes": sorted(set(notes)),
         "schema_version": SCHEMA_VERSION,
+        "staging": staging,
         "target": target if target is not None else UNKNOWN,
         "tier": tier,
         "tool": "capabilities",
@@ -1050,6 +1082,16 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--json", metavar="PATH", help="write JSON to PATH; - means stdout")
     parser.add_argument("--quiet", action="store_true", help="suppress the human report; JSON only")
     parser.add_argument(
+        "--staging-url",
+        metavar="URL",
+        help=(
+            "declare the staging environment for the site named by --target. Staging is never "
+            "inferred: nothing observable from outside proves a URL is this site's staging "
+            "environment, and being wrong points a later write at the wrong installation. "
+            "Its absence is not a blocker — it changes the fix process, not whether work proceeds."
+        ),
+    )
+    parser.add_argument(
         "--local-root",
         metavar="PATH",
         help=(
@@ -1076,7 +1118,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     file=sys.stderr,
                 )
                 return EXIT_USAGE
-        profile = build_profile(target, declared_root)
+        profile = build_profile(target, declared_root, getattr(args, "staging_url", None))
         return write_outputs(profile, args.json, args.quiet)
     except ValueError as exc:
         print("capabilities: {}".format(exc), file=sys.stderr)

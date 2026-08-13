@@ -124,8 +124,8 @@ Produced by `fingerprint.py`. Consumed by both skills to decide which catalog se
     "php_version":   { "value": "unknown",          "confidence": "none",   "evidence": [] },
     "host_class":    { "value": "wpengine",         "confidence": "high",   "evidence": ["..."] },
     "cdn":           { "value": "cloudflare",       "confidence": "high",   "evidence": ["..."] },
-    "multilingual":  { "value": "none",             "confidence": "medium", "evidence": ["..."] },
-    "woocommerce":   { "value": false,              "confidence": "medium", "evidence": ["..."] },
+    "multilingual":  { "value": "unknown",          "confidence": "none",   "evidence": ["..."] },
+    "woocommerce":   { "value": "unknown",          "confidence": "none",   "evidence": ["..."] },
     "multisite":     { "value": "unknown",          "confidence": "none",   "evidence": [] }
   },
   "cache_layers": [
@@ -148,6 +148,14 @@ Rules:
   makes two profiles diffable.
 - `is_wordpress`, `woocommerce` carry booleans or the string `"unknown"`; everything else is a
   string.
+- **A negative verdict needs evidence of absence, not absence of evidence.** Finding no public
+  marker yields `"unknown"`, never `false` or `"none"`. A CDN, an optimizer or a headless front end
+  strips markers from sites that unmistakably have the thing, and a crawl of a few pages never
+  reaches most of a site. This is invariant 3 applied in the direction it is easiest to forget:
+  `woocommerce: false` on a real store leads to brochure-site caching advice, which this project's
+  own catalog warns can expose private cart or order state. The observation is still reported —
+  the evidence string says what was looked for and across how many pages — because *"we looked and
+  saw none"* is useful. Concluding `false` from it is not.
 - `notes` explains *why* something is unknown when the reason is itself informative. This is
   what lets the agent say "the host strips this header" instead of silently omitting it.
 
@@ -201,8 +209,11 @@ Produced by `perf-probe.py`. The before/after comparison document.
 Rules:
 
 - **`origin_ttfb_ms` and `edge_ttfb_ms` are never merged.** Origin is measured with a unique
-  cache-buster per request so every hit is a genuine miss; edge is the bare URL as a visitor
-  gets it. A blended number hides which problem the site has. This separation is the reason
+  cache-buster per request, which defeats any cache keyed on the query string; edge is the bare
+  URL as a visitor gets it. **The buster proves the query-varying layers were bypassed, not that
+  PHP executed** — an inner page or object cache that ignores the query string can still serve it.
+  `cache_status` carries what the answering layer actually reported, and is the evidence for how
+  the request was served. A blended number hides which problem the site has. This separation is the reason
   this script exists.
 - Reported TTFB is the **median** of `repeats` samples; the raw samples ship alongside so an
   outlier is visible rather than averaged away.
@@ -267,6 +278,7 @@ Produced by `capabilities.py`. Decides the access tier and which measurement pat
     "psi_api_key":          { "present": false, "version": null },
     "wp_cli":               { "present": false, "version": null }
   },
+  "staging":        { "declared": false, "url": "unknown" },
   "can_measure":    ["origin-vs-edge TTFB", "payload weight", "render-blocking resources"],
   "cannot_measure": ["autoloaded option size", "slow queries", "cron spikes"],
   "notes": ["No browser-capable tool found; Core Web Vitals cannot be measured in this session."]
@@ -284,6 +296,9 @@ Rules:
   admin access. It never on its own raises the tier above 0.
 - `can_measure` / `cannot_measure` are human-readable and mutually exclusive. Together they are
   what the agent reports to the operator as the honest boundary of the audit.
+- `staging` records an operator declaration via `--staging-url`, never an inference. It is
+  reported so the fix skill can choose a process, and its absence is a normal state rather than a
+  problem: it is `{"declared": false, "url": "unknown"}` on most sites.
 - Detection is **presence-only and local** — no credential is used, no login attempted, no
   request authenticated. Establishing that `/wp-json/` returns an index is a public GET.
 
@@ -306,6 +321,8 @@ stops the run. A plan is cheap to reject; a half-applied change to production is
   "tier": 2,
   "baseline_metrics": "baselines/before.json",
   "cache_layers_present": ["edge", "page-plugin"],
+  "staging": { "url": "https://staging.example.com", "confirmed_by": "MyKinsta environment" },
+  "sequence_rationale": "Purge configuration first, so the second change is measured warm.",
   "changes": [
     {
       "id": "c1",
@@ -328,6 +345,15 @@ Rules — each exists because violating it has a specific real-world cost:
 - **`risk_lane`** is `direct` | `staging-first` | `prohibited`. A change is `prohibited` when the
   host forbids it; the validator rejects the whole plan rather than skipping the change, because
   a plan containing a prohibited action was built on a wrong understanding of the environment.
+- **The host's page-cache policy is checked against a table, not read from the plan.**
+  `references/host-policy.json` carries each host's verdict, transcribed from `host-constraints.md`
+  with its first-party citation, and `validate_plan.py` computes the verdict from `host_class` plus
+  the change's own target. A plan cannot assert its way past it, for the same reason
+  `approval.required: false` is refused rather than obeyed. An unmapped host is refused, not exempt.
+- **`host_confirmation`** is optional, and carries **evidence, never a verdict**:
+  `{"source": "…", "scope": "…"}`, both non-empty. It upgrades an `unconfirmable` host — the common
+  case, and without it the gate would block legitimate work on most real sites. It can **never**
+  override a published prohibition, and it is not approval: per-change approval is still separate.
 - **`snapshot.artifact` must exist on disk before execution.** `required: true` with a missing
   artifact fails validation. A change you cannot reverse is not a change you may make.
 - **`approval.granted` must be `true` at execution time**, per change. Approval for one change is
@@ -358,6 +384,29 @@ Rules — each exists because violating it has a specific real-world cost:
   The accepted cost is that a fingerprint taken against a subpage no longer matches a plan whose
   `site` is the root — re-run `fingerprint.py` against the site root.
   </details>
+- **`staging` is declared, never inferred, and is not a gate.** Most WordPress sites have no
+  staging environment, and refusing to work on them would make the skill unused rather than safe —
+  the same reasoning that makes tier 0 a complete audit rather than a degraded one. Its absence
+  changes the evidence required, not whether work proceeds. When present it carries `url` and a
+  `confirmed_by` naming something a human could check; nothing observable from outside proves a URL
+  is this site's staging environment.
+- **A file-backed change needs staging OR stated `compensating_controls`.** `theme-file`,
+  `plugin-file` and `mu-plugin` changes can fatal a site, so a plan that has neither is refused —
+  not for lacking staging, but for having no answer to how a fatal would be survived.
+  `compensating_controls` carries `mechanism`, `verification` and `rollback_trigger`, all non-empty.
+  Database-backed kinds are exempt: the snapshot already holds the prior value and rollback is
+  setting it back. See [staging.md](../skills/wp-perf-fix/references/staging.md).
+- **Staging proves safety, not speed.** Managed staging commonly runs with page cache and OPcache
+  disabled, so a before/after measured there is not evidence about production. The scorecard's
+  measurement always happens on production, warm.
+- **Promotion depends on where the change lives.** File-backed changes are promoted by pushing
+  **files only**. Database-backed changes are **re-applied** on production and never promoted by a
+  database push, which would discard everything written to the live site since the staging copy —
+  comments, sign-ups, orders.
+- **`changes` is a serial queue, executed one at a time.** More than one is legitimate, because
+  performance work has real dependencies. A plan carrying several must state
+  `sequence_rationale`: what each change depends on, and what would be mis-attributed in another
+  order. Ids stay unique so a report and a rollback can name one unambiguously.
 - **`tier` must be sufficient for every `target.kind`** in the plan — a `theme-file` change needs
   tier 3, a `wp-option` change needs tier 2, and so on. Planning a change the access level cannot
   perform wastes an approval round-trip at best.

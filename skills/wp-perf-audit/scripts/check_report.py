@@ -79,20 +79,27 @@ STRUCTURAL_RULES = frozenset(
 )
 # Only these metrics have a published threshold table in the report contract.
 RATEABLE_METRICS = ("lcp", "inp", "cls")
-# Rating words are a closed vocabulary; the em dash means deliberately unrated.
+# Rating words are a closed vocabulary; a dash means deliberately unrated.
 RATING_WORDS = ("good", "needs-improvement", "poor")
 EM_DASH = "—"
+# Both dashes mean "no rating". The em dash is what the contract shows, but it is awkward to type
+# on many keyboards and an ASCII hyphen in a Rating column is unambiguous, so both are accepted and
+# the contract says so. What matters is that no rating was claimed, not which character says it.
+# Accepting one and rejecting the other in the same table — which is what this did, depending on
+# whether the row was measured — is worse than either rule applied consistently.
+UNRATED_MARKS = (EM_DASH, "-")
 # The contract names these two explicit states for data that is not measured.
 UNMEASURED_VALUES = ("unmeasured", "unavailable")
 
-# LCP thresholds come directly from report-contract.md and are measured in seconds.
-LCP_GOOD_BELOW_SECONDS = Decimal("2.5")
+# Thresholds come directly from report-contract.md. The good boundary is INCLUSIVE: the published
+# definitions read "200 milliseconds or less" and "0.1 or less", so a metric sitting exactly on the
+# boundary is good. Naming these AT_OR_BELOW rather than BELOW keeps that readable at every call.
+# Decimal, not float, because 0.1 has no exact binary representation and CLS is compared against it.
+LCP_GOOD_AT_OR_BELOW_SECONDS = Decimal("2.5")
 LCP_POOR_ABOVE_SECONDS = Decimal("4.0")
-# INP thresholds come directly from report-contract.md and are measured in milliseconds.
-INP_GOOD_BELOW_MILLISECONDS = Decimal("200")
+INP_GOOD_AT_OR_BELOW_MILLISECONDS = Decimal("200")
 INP_POOR_ABOVE_MILLISECONDS = Decimal("500")
-# CLS thresholds come directly from report-contract.md and are unitless.
-CLS_GOOD_BELOW = Decimal("0.1")
+CLS_GOOD_AT_OR_BELOW = Decimal("0.1")
 CLS_POOR_ABOVE = Decimal("0.25")
 # A Markdown table delimiter needs at least three hyphens per column.
 MIN_TABLE_SEPARATOR_HYPHENS = 3
@@ -107,6 +114,9 @@ NUMBER_RE = re.compile(
     r"(?:[eE][+-]?\d+)?(?:[ \t]*([A-Za-z%]+))?$"
 )
 PLACEHOLDER_RE = re.compile(r"^\{\{[^{}\r\n]+\}\}$")
+# The same slot syntax anywhere in a line, not just filling a whole cell — used to catch an
+# unfinished draft outside the scorecard, where a placeholder sits in prose rather than a table.
+ANY_PLACEHOLDER_RE = re.compile(r"\{\{[^{}\r\n]+\}\}")
 LAB_OR_FIELD_RE = re.compile(r"\b(?:lab|field)\b", re.IGNORECASE)
 
 
@@ -387,28 +397,29 @@ def expected_rating(metric: str, value: Decimal) -> Tuple[str, str]:
     """Return the contract rating and an explanation of its exact boundary."""
 
     if metric == "lcp":
-        lower = LCP_GOOD_BELOW_SECONDS
+        lower = LCP_GOOD_AT_OR_BELOW_SECONDS
         upper = LCP_POOR_ABOVE_SECONDS
         unit = "s"
     elif metric == "inp":
-        lower = INP_GOOD_BELOW_MILLISECONDS
+        lower = INP_GOOD_AT_OR_BELOW_MILLISECONDS
         upper = INP_POOR_ABOVE_MILLISECONDS
         unit = "ms"
     else:
-        lower = CLS_GOOD_BELOW
+        lower = CLS_GOOD_AT_OR_BELOW
         upper = CLS_POOR_ABOVE
         unit = ""
 
+    # The published thresholds are inclusive at the good boundary: INP is defined as "200
+    # milliseconds or less" and CLS as "0.1 or less", and LCP as occurring "within 2.5 seconds".
+    # A metric sitting exactly on the boundary is therefore good, not needs-improvement.
     suffix = " {}".format(unit) if unit else ""
-    if value < lower:
-        return "good", "good is < {}{}".format(lower, suffix)
+    if value <= lower:
+        return "good", "good is {}{} or less".format(lower, suffix)
     if value > upper:
-        return "poor", "poor is > {}{}".format(upper, suffix)
+        return "poor", "poor is more than {}{}".format(upper, suffix)
     return (
         "needs-improvement",
-        "needs-improvement is {}..{}{}, including both boundary values".format(
-            lower, upper, suffix
-        ),
+        "needs-improvement is above {}{} and up to {}{}".format(lower, suffix, upper, suffix),
     )
 
 
@@ -459,14 +470,14 @@ def validate_rating_vocabulary(
     rating = row.rating.strip()
     if is_placeholder(rating, template_mode):
         return True
-    if rating in RATING_WORDS or rating == EM_DASH:
+    if rating in RATING_WORDS or rating in UNRATED_MARKS:
         return True
     label = row.metric.strip() or "<blank>"
     add_problem(
         problems,
         label,
         "scorecard_rating_vocabulary",
-        "scorecard row {!r}: rating {!r} is outside the closed vocabulary. Use 'good', 'needs-improvement', 'poor', or '—'.".format(
+        "scorecard row {!r}: rating {!r} is outside the closed vocabulary. Use 'good', 'needs-improvement', 'poor', or '—' (an ASCII '-' is accepted too).".format(
             label, rating
         ),
     )
@@ -519,7 +530,7 @@ def validate_scorecard_row(
                         label, rating
                     ),
                 )
-            elif rating != EM_DASH:
+            elif rating not in UNRATED_MARKS:
                 validate_rating_vocabulary(row, template_mode, problems)
         else:
             validate_rating_vocabulary(row, template_mode, problems)
@@ -560,7 +571,7 @@ def validate_scorecard_row(
         return
 
     if unmeasured:
-        if not rating_placeholder and rating not in (EM_DASH, "-"):
+        if not rating_placeholder and rating not in UNRATED_MARKS:
             add_problem(
                 problems,
                 label,
@@ -613,7 +624,7 @@ def validate_scorecard_row(
                     label, rating
                 ),
             )
-        elif rating != EM_DASH:
+        elif rating not in UNRATED_MARKS:
             validate_rating_vocabulary(row, template_mode, problems)
         return
 
@@ -633,7 +644,7 @@ def validate_scorecard_row(
     if rating_placeholder or normalized is None:
         return
     if rating not in RATING_WORDS:
-        if rating == EM_DASH:
+        if rating in UNRATED_MARKS:
             expected, explanation = expected_rating(metric, normalized)
             add_problem(
                 problems,
@@ -765,9 +776,13 @@ def validate_sections(
         heading = first.get(section)
         if heading is None:
             continue
+        # A section ends at the next heading of the SAME level or higher, never at one nested
+        # inside it. Ending at any heading treated "## What did not work" followed by
+        # "### Attempt 1" as empty and refused a perfectly well-structured report — punishing the
+        # authors who organize this section most carefully.
         end_index = len(original_lines)
         for candidate in headings:
-            if candidate.line_index > heading.line_index:
+            if candidate.line_index > heading.line_index and candidate.level <= heading.level:
                 end_index = candidate.line_index
                 break
         body = "\n".join(original_lines[heading.line_index + 1 : end_index])
@@ -783,6 +798,105 @@ def validate_sections(
     return first
 
 
+def validate_no_placeholders(
+    lines: Sequence[str],
+    hidden: Sequence[bool],
+    template_mode: bool,
+    problems: List[Problem],
+) -> None:
+    """Refuse a report that still carries unfilled template slots.
+
+    The skill tells the agent to publish on a clean exit, so anything this accepts is something an
+    operator can receive. A draft copied from the template with only the scorecard completed used
+    to pass with `{{FINDING_TITLE}}` and `{{ROLLBACK}}` still in it — a half-written report that
+    the checker had blessed, which is worse than one that was never checked.
+
+    Fenced blocks are exempt: the contract and the template legitimately show placeholder syntax
+    in examples.
+    """
+
+    if template_mode:
+        return
+    seen: Dict[str, int] = {}
+    for index, line in enumerate(lines):
+        if hidden[index]:
+            continue
+        for match in ANY_PLACEHOLDER_RE.finditer(line):
+            seen.setdefault(match.group(0), index + 1)
+    for placeholder in sorted(seen):
+        add_problem(
+            problems,
+            placeholder,
+            "unfilled_placeholder",
+            "line {}: {} is still a template placeholder. Replace it with the real value, or "
+            "with 'none' if there is nothing to report — publishing the slot itself tells the "
+            "reader nothing.".format(seen[placeholder], placeholder),
+        )
+
+
+def validate_result_section(
+    lines: Sequence[str],
+    hidden: Sequence[bool],
+    headings: Sequence[Heading],
+    sections: Mapping[str, Heading],
+    template_mode: bool,
+    problems: List[Problem],
+) -> None:
+    """Require a fix report's before/after table to carry every scorecard row.
+
+    `wp-perf-fix` step 9 promises the same ten rows again, with a delta column. Only checking the
+    scorecard let a fix report ship a Result table holding two flattering rows and omitting the
+    metrics that did not move — which is the precise failure the before/after table exists to
+    prevent, since a change that moved nothing is exactly what an operator needs to see.
+
+    A read-only audit has nothing to put here, so a Result section that reports no rows at all is
+    accepted: this rule constrains fix reports, and only once they start filling the table.
+    """
+
+    heading = sections.get("Result")
+    if heading is None:
+        return
+    end_index = len(lines)
+    for candidate in headings:
+        if candidate.line_index > heading.line_index and candidate.level <= heading.level:
+            end_index = candidate.line_index
+            break
+
+    present: Dict[str, int] = {}
+    for index in range(heading.line_index + 1, min(end_index, len(lines))):
+        if hidden[index]:
+            continue
+        cells = split_table_row(lines[index])
+        if not cells or is_table_separator(cells):
+            continue
+        name = normalize_metric(cells[0])
+        if name in ("metric", "page"):
+            continue
+        present.setdefault(name, index + 1)
+
+    required = {normalize_metric(metric): metric for metric in REQUIRED_METRICS}
+    matched = [key for key in required if key in present]
+    if not matched:
+        # Either a read-only audit, or a fix report that has not filled the table yet. Both are
+        # outside this rule; the scorecard has already been checked either way.
+        return
+
+    missing = [required[key] for key in required if key not in present]
+    if missing and not template_mode:
+        add_problem(
+            problems,
+            "Result",
+            "result_missing_rows",
+            "section '## Result' reports a before/after for some metrics but omits {}. A fix "
+            "report carries the same {} rows as the scorecard, because a metric that did not "
+            "move is the result an operator most needs to see. Required rows, in order: {}.".format(
+                ", ".join(repr(name) for name in missing),
+                len(REQUIRED_METRICS),
+                required_metric_order(),
+            ),
+        )
+
+
 def validate_report(document: str, template_mode: bool = False) -> List[Problem]:
     """Apply every report rule and return all violations without short-circuiting."""
 
@@ -790,6 +904,7 @@ def validate_report(document: str, template_mode: bool = False) -> List[Problem]
     lines, hidden = visible_lines(document)
     headings = parse_headings(lines, hidden)
     sections = validate_sections(document, lines, headings, problems)
+    validate_no_placeholders(lines, hidden, template_mode, problems)
 
     scorecard = sections.get("Scorecard")
     if scorecard is not None:
@@ -825,6 +940,8 @@ def validate_report(document: str, template_mode: bool = False) -> List[Problem]
                 " | ".join(SCORECARD_COLUMNS),
             ),
         )
+
+    validate_result_section(lines, hidden, headings, sections, template_mode, problems)
     return sorted_problems(problems)
 
 
@@ -937,7 +1054,7 @@ def selftest_report() -> str:
 | Metric | Value | Rating | Source |
 |---|---|---|---|
 | LCP | 2.4 s | good | lab browser timing |
-| INP | 200 ms | needs-improvement | field interaction data |
+| INP | 250 ms | needs-improvement | field interaction data |
 | CLS | 0.25 | needs-improvement | lab layout shifts |
 | FCP | 1.8 s | — | lab browser timing |
 | TBT | unavailable | — | no audit runner in this session |
@@ -1062,7 +1179,7 @@ def run_selftest() -> int:
         (
             "unmeasured row carrying a rating refused",
             base.replace(
-                "| INP | 200 ms | needs-improvement | field interaction data |",
+                "| INP | 250 ms | needs-improvement | field interaction data |",
                 "| INP | unmeasured | poor | no driven interaction |",
                 1,
             ),
@@ -1149,10 +1266,93 @@ def run_selftest() -> int:
     cases.append(("template placeholders accepted", template, True, None))
     cases.append(
         (
-            "LCP boundary 2.5 s labelled good refused",
+            # The published definitions are inclusive at the good boundary ("200 milliseconds or
+            # less", "0.1 or less"), so a metric sitting exactly on it is good. This case asserted
+            # the opposite until a review checked the wording against the source.
+            "LCP boundary 2.5 s labelled good is ACCEPTED",
             base.replace("| LCP | 2.4 s |", "| LCP | 2.5 s |", 1),
             False,
-            "scorecard_rating_threshold",
+            None,
+        )
+    )
+    cases.append(
+        (
+            "INP boundary 200 ms labelled good is ACCEPTED",
+            base.replace("| INP | 250 ms | needs-improvement |", "| INP | 200 ms | good |", 1),
+            False,
+            None,
+        )
+    )
+    cases.append(
+        (
+            "CLS boundary 0.1 labelled good is ACCEPTED",
+            base.replace("| CLS | 0.25 | needs-improvement |", "| CLS | 0.1 | good |", 1),
+            False,
+            None,
+        )
+    )
+    cases.append(
+        (
+            # A draft copied from the template and only partly filled used to pass, and the skill
+            # tells the agent to publish on a clean exit — so the checker was blessing an
+            # unfinished report.
+            "an unfilled placeholder outside the scorecard is refused",
+            base.replace("## Deliberate decisions\n", "## Deliberate decisions\n\n- {{DECISION}}\n", 1),
+            False,
+            "unfilled_placeholder",
+        )
+    )
+    cases.append(
+        (
+            "CONTROL: the same placeholder is accepted in --template mode",
+            base.replace("## Deliberate decisions\n", "## Deliberate decisions\n\n- {{DECISION}}\n", 1),
+            True,
+            None,
+        )
+    )
+    cases.append(
+        (
+            # An H3 inside an honesty section used to end it, so a well-organized report was
+            # refused for being "empty" — punishing exactly the authors who structure it best.
+            "an honesty section with an H3 subsection is ACCEPTED",
+            base.replace(
+                "## What did not work\n",
+                "## What did not work\n\n### Attempt 1 — the payload walk\n",
+                1,
+            ),
+            False,
+            None,
+        )
+    )
+    cases.append(
+        (
+            # A fix report must carry every scorecard row again, or a change that moved nothing
+            # can be left out of the before/after table that exists to surface it.
+            "a Result table that reports some metrics but omits others is refused",
+            base.replace(
+                "## Result\n\nnone\n",
+                "## Result\n\n| Metric | Before | After | Δ |\n|---|---|---|---|\n"
+                "| LCP | 4.9 s | 2.1 s | −2.8 s |\n",
+                1,
+            ),
+            False,
+            "result_missing_rows",
+        )
+    )
+    cases.append(
+        (
+            "CONTROL: a read-only audit's empty Result section is accepted",
+            base,
+            False,
+            None,
+        )
+    )
+    cases.append(
+        (
+            "an ASCII hyphen is accepted as 'unrated' on a measured row too",
+            base.replace("| Requests | 696 | — |", "| Requests | 696 | - |", 1),
+            False,
+            None,
         )
     )
 

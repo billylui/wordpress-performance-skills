@@ -127,8 +127,8 @@ Match the change to the architecture:
 
 | Host class | Permitted | Path |
 |---|---|---|
-| `wpengine` | Content edits are permitted; cache-key and purge changes must use the active host/edge controls. | Enumerate and purge every language host/path at both layers. |
-| `kinsta` | Content edits are permitted; cache-key and purge changes must use the active host/edge controls. | Enumerate and purge every language host/path at both layers. |
+| `wpengine` | Content edits go through the platform's own editing path; cache-key and purge changes must use the active host/edge controls. Confirm the authoritative path before editing files. | Enumerate and purge every language host/path at both layers. |
+| `kinsta` | Content edits go through the platform's own editing path; cache-key and purge changes must use the active host/edge controls. Confirm the authoritative path before editing files. | Enumerate and purge every language host/path at both layers. |
 | `pantheon` | Preserve platform cache integration and domain routing. | Validate each language host/path through the supported cache workflow. |
 | `wpcom` | Use only exposed plugin, domain, and cache controls. | Escalate unavailable per-language purge or routing controls. |
 | `wpvip` | Follow deployment and cache-review workflow for plugin or code changes. | Include the complete language URL matrix in verification. |

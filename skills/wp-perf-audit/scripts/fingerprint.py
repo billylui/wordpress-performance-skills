@@ -443,11 +443,21 @@ def detect_wordpress(
     if evidence:
         wordpress = make_signal(True, "high", evidence)
     else:
-        confidence = "medium" if len(pages) >= DEFAULT_TOTAL_PAGES else "low"
+        # Absence of public markers is not evidence of absence, and this repo's first invariant is
+        # that `unknown` is a first-class value. A CDN, an optimizer or a headless front end can
+        # strip every marker from a site that is unmistakably WordPress, so a `false` here would be
+        # a confident claim built on finding nothing. The observation is kept as evidence, because
+        # "we looked across N pages and saw none" is genuinely useful — it is the conclusion drawn
+        # from it that was wrong.
         wordpress = make_signal(
-            False,
-            confidence,
-            ["probe: no public WordPress markers found across " + str(len(pages)) + " HTML page(s)"],
+            "unknown",
+            "none",
+            [
+                "probe: no public WordPress markers found across "
+                + str(len(pages))
+                + " HTML page(s); markers can be stripped by a CDN, an optimizer, or a headless "
+                "front end, so this does not establish that the site is not WordPress"
+            ],
         )
 
     versions: List[str] = []
@@ -891,11 +901,17 @@ def detect_multilingual(
             "hreflang markup is present, but it does not identify a supported multilingual product."
         )
         return unknown_signal(), notes
-    confidence = "medium" if len(pages) >= DEFAULT_TOTAL_PAGES else "low"
+    # `none` is a positive claim that the site is monolingual, and finding no marker does not
+    # support it: a translation layer can run entirely server-side, or on paths this crawl never
+    # reached. It matters because per-language cache keys change what cache advice is correct.
     return make_signal(
+        "unknown",
         "none",
-        confidence,
-        ["probe: no supported multilingual product markers found across " + str(len(pages)) + " HTML page(s)"],
+        [
+            "probe: no supported multilingual product markers found across "
+            + str(len(pages))
+            + " HTML page(s); a server-side or unsupported translation layer would leave none"
+        ],
     ), notes
 
 
@@ -915,11 +931,19 @@ def detect_woocommerce(pages: Sequence[FetchedPage], parsers: Sequence[PageParse
     if evidence:
         confidence = "high" if "/plugins/woocommerce/" in joined else "medium"
         return make_signal(True, confidence, evidence)
-    confidence = "medium" if len(pages) >= DEFAULT_TOTAL_PAGES else "low"
+    # The most consequential of the three. This project's own catalog entry says a false result
+    # "does not prove that no store exists", and warns that brochure-site caching advice applied to
+    # a store can expose private cart or order state to another visitor. A crawl that never reached
+    # a shop page sees no markers on a site that certainly sells things.
     return make_signal(
-        False,
-        confidence,
-        ["probe: no WooCommerce public markers found across " + str(len(pages)) + " HTML page(s)"],
+        "unknown",
+        "none",
+        [
+            "probe: no WooCommerce public markers found across "
+            + str(len(pages))
+            + " HTML page(s); the crawl may not have reached a shop, cart or checkout page, so "
+            "this does not establish that no store exists"
+        ],
     )
 
 

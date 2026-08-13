@@ -55,6 +55,71 @@ specification. Almost every entry is a defect that only appeared under real use.
   still have passed. Four cases now assert it, including that `fingerprint.py` and
   `perf-probe.py` send the *same* string — on a bot-protected site, disagreement makes the two
   scripts describe different pages.
+- **The host-constraint gate now reads the host's constraints.** `validate_plan.py` previously
+  refused a change whose `risk_lane` the plan had *already labelled* `prohibited` — and the agent
+  wrote that label — so a plan declaring `host_class: wpengine` while activating WP Rocket, a page
+  cache WP Engine's own disallowed list forbids, passed with zero problems. The page-cache verdict
+  for all 17 host classes now comes from `references/host-policy.json`, transcribed from
+  `host-constraints.md` with its first-party citation, and is computed from `host_class` plus the
+  change's own target. A plan cannot assert its way past it. An unmapped host is refused rather
+  than exempt, and a missing policy file stops the run instead of waving it through.
+- `host_confirmation` on a change carries **evidence, never a verdict** — a `source` a human could
+  check and a `scope` saying what was confirmed. It unblocks a host whose policy is merely
+  *unconfirmed*, which is most of them and without which the gate would block legitimate work on
+  real sites. It can never override a published prohibition.
+- `tools/check_host_policy.py` fails the build if the policy table and its human document drift,
+  if a host is missing from either, or if a permissive verdict cites nothing.
+- **Absence of a public marker is now `unknown`, not a negative claim.** `fingerprint.py`
+  reported `woocommerce: false`, `multilingual: none` and `is_wordpress: false` at medium
+  confidence when it found nothing — contradicting the invariant this project calls its most
+  important. A CDN, an optimizer or a headless front end strips markers from sites that
+  unmistakably have the thing, and a crawl of a few pages never reaches most of a site. The
+  WooCommerce case had the clearest harm path: the catalog already warned that a false result
+  "does not prove that no store exists", and that brochure-site caching advice applied to a store
+  can expose private cart or order state. The observation survives as evidence — what was searched
+  for, across how many pages — because "we looked and saw none" is useful; concluding `false` from
+  it was not.
+- **Three claims that outran their evidence, corrected.** A unique cache-buster defeats caches
+  keyed on the query string; it does not prove PHP executed, so "every hit is a genuine miss"
+  became a statement of what the technique actually achieves, with `cache_status` named as the
+  evidence for how a request was served. `capabilities.py` reported tier 3 at `high` confidence
+  from a writable git checkout with *some* remote configured — which proves neither reachability,
+  nor credentials, nor that the remote owns production — and now reports `medium` and says what was
+  not exercised; `access-tiers.md` had documented that gap while the code contradicted it.
+- **Six catalog entries claimed "No host-specific restriction applies", and the entry template
+  instructed authors to write it.** A defect class can be host-neutral, but the change *mechanism*
+  is not: a WP Engine GitPush reverts direct edits to tracked files, Pantheon's Live code is
+  read-only, and several platforms own the cache drop-ins. The template was fixed first, since it
+  regenerates the claim on every new entry, and `check_skill_docs.py` now refuses the retired
+  sentence. Two uncited "are permitted" claims about named managed hosts became conditions to
+  confirm.
+- **Staging is a capability, not a precondition.** It was never checked anywhere — not detected,
+  not in the schema, not in the validator — while the skill said to "say so and stop" without it.
+  Both halves were wrong: nothing enforced the rule, and the rule would have made the skill
+  unusable on the majority of WordPress sites, which have no staging. `capabilities.py` gains
+  `--staging-url` (declared, never inferred), and `validate_plan.py` refuses a **code** change that
+  has neither staging nor stated `compensating_controls` — not for lacking staging, but for having
+  no answer to how a PHP fatal would be survived. Database-backed changes are exempt: the snapshot
+  already holds the prior value.
+- **Staging proves safety, not speed**, and the difference is now written down. Managed staging
+  commonly runs with page cache and OPcache disabled, so a before/after measured there is not
+  evidence about production; the scorecard measurement always happens on production, warm.
+  Promotion also depends on where a change lives — files are pushed, database changes are
+  **re-applied**, because a database push discards everything written to the live site since the
+  staging copy, including orders. `references/staging.md` carries this with its sources.
+- **`changes` is a serial queue, and says why it is in that order.** A plan may carry several —
+  performance work has real dependencies — but they execute strictly one at a time, and a plan with
+  more than one now states `sequence_rationale`. Previously a two-change plan passed with no
+  ordering stated at all, and the documents supported two different readings of what that meant.
+- **Four gates that could be bypassed, or were never enforced.** An independent review of the
+  whole session found them; each was reproduced before being fixed. The host-policy gate matched
+  only a bare plugin slug, so `wp-rocket/wp-rocket.php` — the identifier WordPress itself stores in
+  `active_plugins` — passed straight through it on a host that bans page caches. `staging.url`
+  accepted any non-empty string, including the production URL, which would let a "staging-first"
+  change run against production while appearing staged. The circuit breaker never covered
+  stylesheet **discovery**, which is serial and runs before sizing — the exact path that caused the
+  stall it was built for. And the adversarial suite had **never run in CI**, while `docs/TESTING.md`
+  declared it an always-on row: every lock in it was unenforced.
 - Code of conduct, issue templates, and a pull-request template.
 
 ### Verified

@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
 # Handoff — what a pre-launch claim audit found
 
-**Status:** OPEN · **Opened:** 2026-08-13 · **Owner:** maintainer
+**Status:** MOSTLY DONE · **Opened:** 2026-08-13 · **Owner:** maintainer
 
 An independent review was asked one question: does the documentation honestly describe what this
 repository does? It read every capability claim and looked for the code behind it. Its verdict was
@@ -9,6 +9,28 @@ that some of the strongest safety claims are not backed, and that this should bl
 
 The findings below were **re-verified here against the running code** before being written down.
 Where the review was wrong, that is recorded too.
+
+## What has since been closed
+
+Findings 1 to 5 are all fixed and locked, each with its own adversarial cases and a taxonomy row in
+[../TESTING.md](../TESTING.md):
+
+- **1 — the host gate** now reads `host-policy.json`, a cited table covering all 17 host classes,
+  and computes the verdict from `host_class` and the change's own target rather than trusting the
+  plan's label. WP-ESC-07.
+- **2 — "every hit is a genuine miss"** now states what a query-string cache-buster actually
+  achieves, with `cache_status` named as the evidence. WP-ESC-09.
+- **3 — tier 3** reports `medium` confidence and names what was not exercised. WP-ESC-09.
+- **4 — the fingerprint** returns `unknown` rather than a negative claim when it finds no marker.
+  WP-ESC-08.
+- **5 — the catalog's blanket host permission** is gone, the entry template that generated it is
+  fixed, and `check_skill_docs.py` refuses the retired sentence. WP-ESC-09.
+
+**Finding 6 remains open:** the case study's campaign figures and the CHANGELOG's verified entries
+have no raw artifact in the repository, so a reader cannot check them. Either land the artifacts or
+mark them as recorded observations rather than reproducible evidence.
+
+The original findings are kept below, unedited, because the miss-classes are what generalize.
 
 ## 1. The host-constraint gate does not know any host's constraints — CONFIRMED, blocking
 
