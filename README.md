@@ -270,10 +270,13 @@ Before anything is touched, the intended change is written to disk as a plan and
 python3 skills/wp-perf-fix/scripts/validate_plan.py plan.json --stack stack.json
 ```
 
-This is a **fail-closed gate, not a linter.** It refuses a plan whose change the host prohibits,
-whose snapshot artifact does not exist, whose approval is not recorded, whose purge layers do not
-match the layers actually detected, or whose access tier cannot perform the change. A non-zero
-exit stops the run. Prove it to yourself:
+This is a **fail-closed gate, not a linter.** It refuses a plan whose page-cache change the host's
+published policy prohibits, whose snapshot artifact does not exist, whose approval is not recorded,
+whose purge layers do not match the layers actually detected, or whose access tier cannot perform
+the change. The host verdict is computed from a cited table keyed by `host_class`, not read from the
+plan — an unmapped host is refused rather than exempt, and an operator confirmation can unblock a
+merely *unconfirmed* policy but never a published prohibition. Change kinds other than page-cache
+plugins are still checked by the agent against the same reference. A non-zero exit stops the run. Prove it to yourself:
 
 ```bash
 python3 skills/wp-perf-fix/scripts/validate_plan.py --selftest

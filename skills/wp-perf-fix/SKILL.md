@@ -179,6 +179,13 @@ These are refusals, not preferences.
    disallowed ones from the site. **Recommending a prohibited change is a real-world harm.** When
    a host's policy cannot be confirmed, treat it as prohibited and say why, rather than guessing
    permissively.
+
+   For **page-cache plugins**, the validator now checks this itself against
+   [references/host-policy.json](references/host-policy.json) and refuses the plan — you do not have
+   to remember, and you cannot talk it out of a published prohibition. Where a host's policy is
+   merely unconfirmed, obtain confirmation for the exact product and plugin and record it on the
+   change as `host_confirmation` with a `source` a human could go and check. Every other change kind
+   is still yours to check against the reference.
 2. **No change without a verified snapshot.** If the snapshot cannot be captured, the change does
    not happen.
 3. **No change without per-change approval.** Never infer consent from an earlier approval, from
