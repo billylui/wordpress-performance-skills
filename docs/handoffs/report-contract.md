@@ -114,8 +114,9 @@ This is the same plan-validate-execute shape the fix skill already uses, applied
 deliverable. It is what makes "any model produces a predictable outcome" true rather than hoped
 for. The agent runs it on its own draft.
 
-**Test it against the real report** at `sspe-website` PR #67 — a genuine, good-quality audit
-written before the contract existed. What it fails on is the specification working.
+**Test it against the real report** — the first genuine, good-quality audit this project produced,
+written before the contract existed, in the client's own repository. What it fails on is the
+specification working.
 
 ### 5. The fix skill needs the same treatment
 
@@ -143,9 +144,8 @@ outreach are deliberately not started.
 
 Two more from this session:
 
-- **The `sspe-website` audit PR #67 is open and unreviewed.** It is a genuine audit of a live
-  client site and the best available test artifact for the report contract. Its worktree was left
-  at `wt-perf` in that session's scratchpad.
+- **The first real audit is open and unreviewed** in the client's own repository. It is a genuine
+  audit of a live site and the best available test artifact for the report contract.
 - **A dead host can still hang a payload walk.** `--max-assets` caps the count, but the real
   stall on that site was font CSS pointing at a staging domain that resolved and never answered,
   burning a 25-second timeout per request. A per-host circuit breaker — stop requesting a host
@@ -154,7 +154,6 @@ Two more from this session:
 ## Re-verify ground truth before acting
 
 ```bash
-cd /Users/billylui/Development/wordpress-performance-skills
 python3 tools/check_skill_docs.py
 python3 tools/check_no_egress.py
 python3 tools/check_plugin_manifest.py
