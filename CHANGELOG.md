@@ -11,6 +11,19 @@ specification. Almost every entry is a defect that only appeared under real use.
 
 ### Added
 
+- **`cannot_measure` entries say what would unlock them.** Each carries the capability, what was
+  actually missing, the providers or access tier that would unlock it, and `operator_can_supply` —
+  which separates *ask the operator* from *out of reach*. A real audit ended with its second-ranked
+  finding unattributed because `wp profile` was not installed, one message away, and nothing asked.
+  `kind` (`provider` | `access`) routes a gap to the right conversation: providers at `SKILL.md`
+  step 2, access at step 4b, once tier-0 work can name the uncertainty it would resolve. Capability
+  schema 1.1.
+- **`wp-perf-audit` asks once about access, then proceeds either way.** Two checkpoints, never a
+  gate — tier 0 remains a complete audit. The report records a declined gap distinctly from one
+  nobody examined.
+- **`tools/check_measurement_objectives.py`** fails the build when the objectives constant in
+  `capabilities.py` and its human table drift, on the same pattern as the host-policy checker.
+
 - `perf-probe --max-assets N` caps the payload walk. A real audit abandoned the walk after ten
   minutes and lost its byte breakdown; the same page capped at 60 finishes in 80 seconds.
   Resources are chosen in rotation across kinds so a capped breakdown still reflects the page,
@@ -161,13 +174,16 @@ specification. Almost every entry is a defect that only appeared under real use.
   probe could see only edge; declaring the truth was refused and declaring the probe's view left
   the layer holding the stale copy unpurgeable. Operator evidence may only fill an unknown, never
   overwrite a positive public finding.
-- **GoDaddy's page-cache verdict is `prohibited`, cited, instead of `unconfirmable`.** GoDaddy
-  publishes a blocklist for Managed Hosting for WordPress, names three of the page caches this
-  project recognizes on it, and states a detected blocklisted plugin "will be removed". It is
-  `prohibited` rather than `permitted-only` on the six it does not name because GoDaddy disclaims
-  that reading itself: the list is "not an exhaustive list" and may be extended at any time. The
-  other GoDaddy products stay unconfirmable, and the WooCommerce blocklist is not cited because it
-  could not be retrieved.
+- **GoDaddy's page-cache entry is now cited, and stays `unconfirmable`.** GoDaddy publishes a
+  blocklist for Managed Hosting for WordPress, names three of the page caches this project
+  recognizes on it, and states a detected blocklisted plugin "will be removed" — that evidence and
+  its citation are now on the entry, and the prose says to treat that product as prohibited in
+  practice. The verdict itself stays `unconfirmable` because the `godaddy` class cannot establish
+  which product a site is on: `detect_host` matches `x-gd-*`, `x-gateway-*` **and a hostname
+  label**, so a VPS can land in the class at low confidence. `prohibited` refuses
+  `host_confirmation` outright and a declared `host_class` disagreeing with the fingerprint is
+  itself refused, so that verdict would leave an operator on a non-Managed product no path at all.
+  Tracked in `docs/handoffs/godaddy-product-granularity.md`.
 - **`host_class` is the operator's declaration; the fingerprint is a contradiction check.**
   Requiring high-confidence detection before any write meant a GoDaddy site could never be
   fixed, because GoDaddy is detected at medium by design.
@@ -195,6 +211,19 @@ specification. Almost every entry is a defect that only appeared under real use.
   agent that never loads the reference never learns to tell the difference.
 
 ### Fixed
+
+- **Both adversarial checkers were validating stale bytecode.** They loaded the code under test with
+  `spec_from_file_location` + `exec_module`, which consults the `.pyc` cache — and that cache is
+  validated on the source's `(mtime, size)`, both of which can match a file that genuinely changed:
+  reordering two entries leaves the byte count identical, and a write in the same clock second
+  leaves the mtime identical. A reverted mutation kept being reported, and the tools would equally
+  have gone green against code nobody could read. **CI cannot catch this** — a fresh checkout has no
+  `__pycache__` — so the only machine that hits it is the developer's, which is exactly where the
+  pre-push gate is meant to be trustworthy. Both loaders now compile and execute source directly.
+- **A capability gap could name a prerequisite that could not help.** With no `--target`, the LCP,
+  INP, CLS and field-data gaps still carried `kind: "provider"` and an `unlock` listing
+  Lighthouse/MCP/PSI — none of which measures anything without a URL. They now re-key to the access
+  ask in full, not just in the human string.
 
 - **`fingerprint.py` used `x-gateway-*` to name the host and ignored it for the cache layer.** The
   same header that keys `host_class: godaddy` proves a server-side cache exists, so a real GoDaddy
