@@ -140,6 +140,34 @@ specification. Almost every entry is a defect that only appeared under real use.
 
 ### Changed
 
+- **The host-cache gate now reads the operation, not the target's type.** Change plans carry
+  `target.operation` (schema 1.1), and `disable`, `deactivate` and `remove` of a page cache are
+  exempt from the host-policy gate on every host. A disallowed-plugin list exists to stop a cache
+  being *added*; it cannot be violated by taking one away. The old gate refused the safest change
+  available while the identical change relabelled from `plugin-setting` to `wp-option` passed —
+  and the relabel is what a real audit ended up using. Scope is now the identifier across every
+  target kind, so `wp-option`/`active_plugins` no longer walks an activation past it.
+- **`approval.granted` carries evidence rather than asserting itself.** A bare `true` was the same
+  shape as the `approval.required: false` this validator already refuses — a document switching off
+  the check inspecting it, one field over in the same object. Execution readiness now requires
+  `approval.evidence` with a `source` and `scope` a human could go and read back, on the pattern
+  `host_confirmation` already set. `install`, `activate`, `deactivate`, `remove`, `update` and
+  `replace` are refused unless the scope names the operation, so a general approval cannot be spent
+  on a plugin deactivation. A file still cannot verify consent — but it can refuse a bare boolean.
+- **A tier-0 fingerprint that did not look is no longer treated as evidence of absence.** Stack
+  profiles (schema 1.1) carry optional `operator_confirmed` evidence per cache layer, and
+  `cross_check_stack` treats a public `unknown` as *not contradicted* rather than *absent*. Exact
+  set equality deadlocked a real tier-3 audit: the truth was edge, server and object; the public
+  probe could see only edge; declaring the truth was refused and declaring the probe's view left
+  the layer holding the stale copy unpurgeable. Operator evidence may only fill an unknown, never
+  overwrite a positive public finding.
+- **GoDaddy's page-cache verdict is `prohibited`, cited, instead of `unconfirmable`.** GoDaddy
+  publishes a blocklist for Managed Hosting for WordPress, names three of the page caches this
+  project recognizes on it, and states a detected blocklisted plugin "will be removed". It is
+  `prohibited` rather than `permitted-only` on the six it does not name because GoDaddy disclaims
+  that reading itself: the list is "not an exhaustive list" and may be extended at any time. The
+  other GoDaddy products stay unconfirmable, and the WooCommerce blocklist is not cited because it
+  could not be retrieved.
 - **`host_class` is the operator's declaration; the fingerprint is a contradiction check.**
   Requiring high-confidence detection before any write meant a GoDaddy site could never be
   fixed, because GoDaddy is detected at medium by design.
@@ -168,6 +196,22 @@ specification. Almost every entry is a defect that only appeared under real use.
 
 ### Fixed
 
+- **`fingerprint.py` used `x-gateway-*` to name the host and ignored it for the cache layer.** The
+  same header that keys `host_class: godaddy` proves a server-side cache exists, so a real GoDaddy
+  site reported its host correctly and its server cache as `unknown`. It now yields
+  `server: other` at medium confidence — *a cache is here and I cannot tell you which* — which is
+  a different and more useful statement than `unknown`.
+- **A confidence in the Stack section needed no source.** The first real audit report attributed
+  WP-CLI findings to `fingerprint.py` and printed `high` on two cells the script had rated
+  `unknown`, and `check_report.py` passed it with zero problems. The report contract was thorough
+  about the scorecard — required rows, a closed rating vocabulary, an enforced `lab`/`field`
+  declaration — and silent about every other section, so the same defect the scorecard rules exist
+  to prevent reappeared one section down. A Stack table carrying a `Confidence` column must now
+  carry a non-empty `Source` on every row.
+- **The README named six hosts that remove cache plugins and claimed a citation per verdict.**
+  GoDaddy was the seventh and was missing; five of the seventeen host classes carry no citation,
+  because there is nothing first-party to cite for a host nobody has researched. Both now say what
+  is true.
 - **The Mermaid diagrams rendered as run-together text on GitHub.** Every multi-line node label
   used `<br/>`, which only breaks a line where the renderer has `htmlLabels` enabled; GitHub
   sanitises Mermaid labels, so the tag was stripped and "Fingerprint" ran into "what stack is
