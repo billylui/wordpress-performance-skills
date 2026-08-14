@@ -11,7 +11,8 @@ verdict: NOT-READY
 First gate ever run for this repository; `docs/walkthroughs/` did not exist before it, so "since
 last ship" is the whole delta from `b5557a1` — 14 commits, 21 files.
 
-**Verdict: NOT-READY on two rows.**
+**Verdict: NOT-READY — one failing row and one open review finding.** (An earlier revision of this
+line said "two rows", which overstated it: only WP-SCHEMA-01 fails as a row.)
 
 `fafe639` was reviewed after this report was first written, on the operator's instruction rather
 than by waiver. It came back with **three P2 findings**, two of which are siblings of earlier
@@ -57,7 +58,7 @@ Both are in the capability-gap work. Tracked in
 | WP-OBJ-01 | PASS | `check_measurement_objectives.py` → OK, 8 objectives agree with the table |
 | WP-SPEC-01 | PASS | `npx skills-ref@latest validate` → "Valid skill" for both |
 | WP-SPEC-02 | PASS | bodies 304 and 273 lines, budget 500 |
-| WP-PY-01 | PARTIAL | compiles on 3.13.5 locally; the **3.9 leg is the CI matrix and has not run on `fafe639`** — it must be green on the merge commit |
+| WP-PY-01 | PASS | compiles on 3.13.5 locally; the 3.9 leg ran green in CI on the pushed branch (run 31774457518) |
 
 ## Surface rows
 
@@ -102,6 +103,5 @@ No quarantined rows.
 ## What this gate did not cover
 
 - **`fafe639` is unreviewed.** The blocker above.
-- **The 3.9 compile leg** has not run on this commit; it is CI's, on the merge.
 - **No live `wp-perf-fix` write has ever been performed against a production host.** Unchanged by
   this shipment and tracked in `docs/handoffs/pre-publication.md`.
