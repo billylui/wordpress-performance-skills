@@ -51,6 +51,36 @@ attempt, and it was reached twice. Continuing to patch under those conditions pr
 the rule exists to prevent — and the evidence for that is finding 2 above, which is itself a
 too-shallow fix of an earlier finding.
 
+## Resume the ship from here
+
+**Nothing from this shipment is merged.** Two PRs are open and stacked, both green in CI, both
+blocked on the two findings above. The operator chose to hold and fix properly rather than waive.
+
+| | |
+|---|---|
+| PR #33 | `schema-operation-and-tier-evidence` → `main` |
+| PR #34 | `capability-gap-negotiation` → #33's branch |
+| Gate report | `docs/walkthroughs/fafe639.md`, verdict NOT-READY |
+| Review records | `~/.claude/.codex-reviews/checkpoint-wordpress-performance-skills-2026081*` — three rounds |
+
+**They cannot be split.** The fixes for #33's own defects — `fingerprint.py`'s over-broad
+`x-gateway-` match, `check_report.py`'s case-sensitive Stack rule, the GoDaddy revert — all live on
+#34's branch. Merging #33 alone ships the defective versions. It is both or neither.
+
+Order to resume in:
+
+1. Fix item 1 (document `kind`). This alone flips WP-SCHEMA-01 to PASS and is pure contract work.
+2. Fix item 2 (structured prerequisite), against the acceptance test stated above.
+3. Re-review the fix — `codex exec -c model_reasoning_effort="xhigh" review --base <pre-fix sha>`,
+   no prompt argument alongside `--base`.
+4. Re-run `/release-gate`; it writes a new report keyed to the new HEAD. WP-SMOKE-01 needs a live
+   probe of a real public site — the last one used `https://wordpress.org`.
+5. Merge #33, then #34 (GitHub retargets it to `main` automatically), then delete both branches.
+
+**Read `docs/walkthroughs/fafe639.md` before starting.** It records which rows were evidenced how,
+including two whose evidence differs from what the row suggests, and it corrects one row it
+originally passed in error.
+
 ## What already shipped and is LIVE — do not redo
 
 Everything else in `b5557a1..HEAD` passed the gate: operation-scoped host gating, approval
