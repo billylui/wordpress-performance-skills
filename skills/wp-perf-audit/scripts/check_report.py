@@ -122,6 +122,9 @@ PLACEHOLDER_RE = re.compile(r"^\{\{[^{}\r\n]+\}\}$")
 # unfinished draft outside the scorecard, where a placeholder sits in prose rather than a table.
 ANY_PLACEHOLDER_RE = re.compile(r"\{\{[^{}\r\n]+\}\}")
 LAB_OR_FIELD_RE = re.compile(r"\b(?:lab|field)\b", re.IGNORECASE)
+# Stack headers are free-form Markdown, so lightweight inline decoration is
+# ignored when identifying the Confidence and Source columns.
+LIGHTWEIGHT_MARKDOWN_DECORATION_RE = re.compile(r"(?:\*\*|__|`)")
 
 
 class ValidationInputError(Exception):
@@ -192,9 +195,10 @@ def required_metric_order() -> str:
 
 
 def normalize_metric(value: str) -> str:
-    """Normalize metric identity as required by the report contract."""
+    """Normalize case, spacing, and lightweight Markdown for table identity."""
 
-    return " ".join(value.split()).casefold()
+    undecorated = LIGHTWEIGHT_MARKDOWN_DECORATION_RE.sub("", value)
+    return " ".join(undecorated.split()).casefold()
 
 
 def without_html_comments(value: str) -> str:
@@ -316,7 +320,11 @@ def parse_scorecard_rows(
         if tuple(cells) == SCORECARD_COLUMNS:
             header_index = index
             break
-        if cells and cells[0].strip().casefold() == "metric" and candidate is None:
+        if (
+            cells
+            and normalize_metric(cells[0]) == normalize_metric(SCORECARD_COLUMNS[0])
+            and candidate is None
+        ):
             candidate = (index, cells)
 
     if header_index is None:
@@ -877,10 +885,13 @@ def validate_stack_section(
             continue
 
         table_line = index + 1
-        if STACK_CONFIDENCE_COLUMN not in header_cells:
+        normalized_header_cells = [normalize_metric(cell) for cell in header_cells]
+        confidence_column = normalize_metric(STACK_CONFIDENCE_COLUMN)
+        source_column = normalize_metric(STACK_SOURCE_COLUMN)
+        if confidence_column not in normalized_header_cells:
             index += 2
             continue
-        if STACK_SOURCE_COLUMN not in header_cells:
+        if source_column not in normalized_header_cells:
             add_problem(
                 problems,
                 "Stack",
@@ -892,7 +903,7 @@ def validate_stack_section(
             index += 2
             continue
 
-        source_index = header_cells.index(STACK_SOURCE_COLUMN)
+        source_index = normalized_header_cells.index(source_column)
         row_index = index + 2
         while row_index < min(end_index, len(lines)):
             if hidden[row_index] or not lines[row_index].strip():

@@ -896,6 +896,37 @@ def main() -> int:
            "the absence observation is still reported as evidence",
            f"evidence entries: {len(absent['woocommerce']['evidence'])}")
 
+    print("\n=== fingerprint.py — a gateway is not a cache ===")
+    # `x-gateway-*` is the GoDaddy HOST-detection prefix. Keying the server CACHE layer on the same
+    # prefix meant `X-Gateway-Request-Id` — an ordinary header that proves a gateway exists and
+    # nothing about caching — produced a positive server-cache finding. That is not cosmetic:
+    # `validate_plan.cross_check_stack` treats a positive finding as a layer the plan MUST declare
+    # and may NOT fill in with operator evidence, so one unrelated header forces a plan to declare a
+    # cache that does not exist. The cache claim keys on `x-gateway-cache-status`; the host claim
+    # keeps the broad prefix, and the pair below is what stops a fix to one silently changing the
+    # other.
+    def server_layer(headers):
+        layers = fingerprint_mod.detect_cache_layers(
+            headers, "", {"value": "unknown", "confidence": "none", "evidence": []})
+        return next(entry for entry in layers if entry["layer"] == "server")
+
+    noncache = server_layer({"x-gateway-request-id": "abc123"})
+    record(noncache["value"] == "unknown",
+           "a non-cache x-gateway-* header is NOT evidence of a server cache",
+           f"got {noncache['value']!r} @ {noncache['confidence']!r}")
+    cachey = server_layer({"x-gateway-cache-status": "HIT"})
+    record(cachey["value"] == "other" and cachey["confidence"] == "medium",
+           "CONTROL: the cache-specific gateway header IS still detected",
+           f"got {cachey['value']!r} @ {cachey['confidence']!r}")
+    record(bool(cachey["evidence"]) and "x-gateway-cache-status" in cachey["evidence"][0],
+           "CONTROL: and it names the header it saw as its evidence",
+           f"evidence: {cachey['evidence'][:1]}")
+    # The host claim must NOT have been narrowed by the cache fix — they are separate uses of the
+    # same prefix, and this is the control that keeps a fix to one from quietly breaking the other.
+    record(any("x-gateway-" in prefix for prefix in fingerprint_mod.NON_NAMESPACED_HOST_PREFIXES),
+           "CONTROL: host-class detection still keys on the broad x-gateway- prefix",
+           f"prefixes: {fingerprint_mod.NON_NAMESPACED_HOST_PREFIXES}")
+
     print("\n=== the probe must not identify as a bot and measure a challenge page ===")
     # An escaped defect with no lock until now: an honest bot User-Agent is the intuitive choice
     # and was the original one, but security plugins, host WAFs and CDN bot rules answer it with a
@@ -1034,6 +1065,65 @@ def main() -> int:
            "a resource on a cut-off host is unsized, never zero",
            f"size_bytes={skipped_result['size_bytes']}, marked={skipped_result.get('circuit_skipped')}")
     probe.BREAKER.reset()
+
+    print("\n=== check_report.py — a Confidence column must be found however it is written ===")
+    # The Stack provenance rule fires on a column header. It matched `Confidence` exactly, so
+    # `**Confidence**` — a completely ordinary way to write a Markdown table header, and the Stack
+    # section is explicitly free-form — skipped the rule and a Stack table with no Source column
+    # passed. That is WP-ESC-11's miss-class again: a guard tested only with the input its author
+    # had in mind. These cases ask the ORDINARY question instead.
+    #
+    # The fixture is the shipped template, which is known-conformant, with ONLY its Stack table
+    # header rewritten. Anything else failing would fail every variant equally, including the
+    # controls, so a broken fixture cannot masquerade as the guard working.
+    template_text = (REPO / "skills/wp-perf-audit/references/findings-report-template.md").read_text(
+        encoding="utf-8")
+
+    def stack_variant(tmp: pathlib.Path, name: str, header: str, keep_source: bool) -> pathlib.Path:
+        out, in_stack = [], False
+        for line in template_text.splitlines():
+            if line.startswith("## "):
+                in_stack = line.strip() == "## Stack"
+            if in_stack and line.startswith("| Layer |"):
+                out.append(header)
+                continue
+            if in_stack and set(line.strip()) <= set("|-: ") and line.strip().startswith("|"):
+                out.append("|---|---|---|" + ("---|" if keep_source else ""))
+                continue
+            if in_stack and line.startswith("| ") and not keep_source:
+                out.append("|".join(line.rstrip().split("|")[:-2]) + " |")
+                continue
+            out.append(line)
+        path = tmp / f"stack-{name}.md"
+        path.write_text("\n".join(out) + "\n", encoding="utf-8")
+        return path
+
+    with tempfile.TemporaryDirectory(prefix="wp-perf-stack-") as stack_tmp:
+        stack_dir = pathlib.Path(stack_tmp)
+        CHECK_REPORT = REPO / "skills/wp-perf-audit/scripts/check_report.py"
+        for label, header in (
+            ("bold", "| Layer | Detected | **Confidence** |"),
+            ("lower", "| Layer | Detected | confidence |"),
+            ("code", "| Layer | Detected | `Confidence` |"),
+        ):
+            expect_exit(
+                f"a Stack table headed {header.split('|')[3].strip()} with no Source is refused",
+                [CHECK_REPORT, "--template",
+                 stack_variant(stack_dir, label, header, keep_source=False), "--quiet"], 1)
+        expect_exit(
+            "CONTROL: the same bold header WITH a Source column is accepted",
+            [CHECK_REPORT, "--template",
+             stack_variant(stack_dir, "bold-ok", "| Layer | Detected | **Confidence** | Source |",
+                           keep_source=True), "--quiet"], 0)
+        expect_exit(
+            "CONTROL: a Stack table with no Confidence column at all is accepted",
+            [CHECK_REPORT, "--template",
+             stack_variant(stack_dir, "nocol", "| Layer | Detected | Notes |",
+                           keep_source=False), "--quiet"], 0)
+        expect_exit(
+            "CONTROL: the shipped template itself still conforms",
+            [CHECK_REPORT, "--template",
+             REPO / "skills/wp-perf-audit/references/findings-report-template.md", "--quiet"], 0)
 
     failed = [r for r in results if not r[0]]
     print(f"\n=== {len(results) - len(failed)}/{len(results)} passed, {len(skipped)} skipped ===")

@@ -1,8 +1,8 @@
 {
   "expected_behavior": [
-    "Reports the measurement boundary before spending the measurement phase, naming LCP, CLS and the LCP element as the rows that will come back unmeasured in this session",
-    "Names what would unlock them in capability terms and identifies the operator-suppliable options, rather than presenting the gap as a fixed fact",
-    "Asks the operator once, in plain language, and states that the audit proceeds either way",
+    "Reports the measurement boundary before spending the measurement phase, naming LCP, INP, CLS and the LCP element as the rows that will come back unmeasured in this session",
+    "Distinguishes the gaps the operator can close from the one flagged unknown, and treats unknown as an instruction to check its own tool list first rather than as something to ask the operator for",
+    "Asks the operator once, in plain language, for the suppliable items and states that the audit proceeds either way",
     "Proceeds with the tier-0 audit after a single ask, treating the public URL as a complete audit of the frontend and cache layers rather than a degraded mode",
     "Records the outcome so the report distinguishes a metric nobody could measure from one the operator was asked about and declined",
     "contains: unmeasured",
@@ -14,12 +14,13 @@
   "must_not": [
     "Blocks, stalls, or refuses to begin the audit because browser tooling is unavailable, or makes further access a condition of proceeding",
     "Asks repeatedly, presses after a decline, or re-raises the same request later in the run",
-    "Reports an LCP, CLS, or LCP-element value anyway by estimating it, inferring it from TTFB or payload, or carrying it over from another tool or run",
+    "Reports an LCP, INP, CLS, or LCP-element value anyway by estimating it, inferring it from TTFB or payload, or carrying it over from another tool or run",
+    "Treats a gap marked operator_can_supply unknown as a confirmed absence, or asks the operator to supply a provider that would not appear on PATH in the first place",
     "Treats the missing browser as an error condition or a failed audit rather than a normal state with a stated boundary",
     "not_contains: cannot audit without",
     "not_contains: please install before I can"
   ],
-  "query": "Use wp-perf-audit on https://example.com. The capability profile for this session reports tier 0, no browser-capable provider, no Lighthouse binary on PATH, and no PageSpeed Insights key set; its cannot_measure list flags LCP, CLS and LCP element attribution with operator_can_supply true, and field data with operator_can_supply false because the site may sit below Google's traffic threshold. State the boundary to the operator, decide whether and how to ask for anything, and say how you would proceed. The operator is not a developer.",
+  "query": "Use wp-perf-audit on https://example.com. The capability profile for this session reports tier 0 with no browser-capable provider, no Lighthouse binary on PATH, and no PageSpeed Insights key set. Its cannot_measure list holds five gaps: LCP, INP, CLS and Field data each with operator_can_supply true, and LCP element attribution with operator_can_supply unknown, because its only provider is an MCP browser that would never appear on PATH and so cannot be confirmed absent from here. Several access-tier gaps are also listed, including plugin and theme inventory and slow queries, unlocked by wp-admin or WP-CLI. State the boundary to the operator, decide whether and how to ask for anything, and say how you would proceed. The operator is not a developer.",
   "skills": [
     "wp-perf-audit"
   ]

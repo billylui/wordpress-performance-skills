@@ -197,11 +197,23 @@ the plugin category. Every unnamed product remains `UNCONFIRMABLE` and therefore
   verdict is `prohibited` rather than `permitted-only` on the six that happen not to be named.
   [blocklisted plugins](https://www.godaddy.com/help/blocklisted-plugins-8964)
 
-  **Scope, stated honestly:** that page covers Managed Hosting for WordPress. A separate blocklist
-  exists for Managed Hosting for WooCommerce, but it could not be retrieved while writing this entry
-  (404, then 403 from an alternate locale), so nothing here is cited to it. For Web Hosting,
-  WooCommerce, VPS, dedicated and reseller products the position is unchanged and unconfirmed:
-  **UNCONFIRMABLE → PROHIBITED**, ask GoDaddy about the exact product and plugin.
+  **Scope, and why the whole class takes the strict verdict.** That page covers Managed Hosting for
+  WordPress. A separate blocklist exists for Managed Hosting for WooCommerce but could not be
+  retrieved while writing this entry (404, then 403 from an alternate locale), so nothing here is
+  cited to it.
+
+  `prohibited` applies to the entire `godaddy` class, and that is deliberate rather than sloppy —
+  but it has a real cost worth naming. **`prohibited` cannot be overridden by `host_confirmation`;
+  `unconfirmable` can.** So an operator on GoDaddy VPS or Web Hosting holding an explicit support
+  response permitting WP Rocket cannot spend it here. That is the correct trade only because of how
+  this class is *detected*: `fingerprint.py` keys on `x-gd-*` and `x-gateway-*`, which are Managed
+  WordPress platform markers. A GoDaddy VPS running its own nginx emits neither and does not land in
+  this class in the first place.
+
+  **If you are on a non-Managed GoDaddy product**, this class is the wrong label for your site: the
+  markers do not describe you, and the policy above is not about your product. Declare `host_class`
+  as `self-managed` or `other` and confirm the plugin policy with GoDaddy for that product, where
+  `host_confirmation` works normally.
 
   As everywhere in this file, the verdict governs **adding** a page cache. Disabling, deactivating
   or removing one is exempt from this gate — a disallowed-plugin list cannot be violated by taking

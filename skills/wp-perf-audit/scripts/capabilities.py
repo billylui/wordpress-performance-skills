@@ -291,6 +291,48 @@ CLI_CAPABILITIES = (
     "slow queries",
 )
 CODE_CAPABILITY = "theme and plugin source attribution"
+
+# Access gaps name the minimum tier that unlocks the capability, rather than a
+# provider binary. Requirements use the stable access vocabulary operators see
+# in the capability report.
+PUBLIC_ACCESS_REQUIREMENT = "a confirmed public URL"
+ADMIN_ACCESS_REQUIREMENT = "authenticated wp-admin"
+CLI_ACCESS_REQUIREMENT = "WP-CLI against this installation"
+CODE_ACCESS_REQUIREMENT = "a confirmed deploy path"
+ACCESS_TIER_UNLOCK_LABELS = {
+    0: "Tier 0: public",
+    1: "Tier 1: admin",
+    2: "Tier 2: cli",
+    3: "Tier 3: code",
+}
+
+# These explanations report only what the presence checks established: the
+# access path was not exercised or confirmed, never that it cannot exist.
+PUBLIC_ACCESS_BLOCKER = "no public target was confirmed in this session"
+ADMIN_ACCESS_BLOCKER = (
+    "authenticated wp-admin or WP-CLI access was not exercised against this installation"
+)
+CLI_ACCESS_BLOCKER = "WP-CLI was not exercised against this installation"
+CODE_ACCESS_BLOCKER = "no deploy path was confirmed for this installation"
+
+# The public target is a prerequisite for every objective-driven measurement,
+# including browser and field paths. De-duplicate labels already present in the
+# public tuple while preserving a deterministic capability vocabulary.
+PUBLIC_SESSION_CAPABILITIES = tuple(
+    sorted(set(PUBLIC_CAPABILITIES + tuple(OBJECTIVE_CAN_MEASURE_LABELS.values())))
+)
+# This is the complete set whose availability the script reports. It is derived
+# from the existing tier tuples so capability labels have one source of truth.
+AUDIT_CAPABILITIES = tuple(
+    sorted(
+        set(
+            PUBLIC_SESSION_CAPABILITIES
+            + ADMIN_CAPABILITIES
+            + CLI_CAPABILITIES
+            + (CODE_CAPABILITY,)
+        )
+    )
+)
 # Only names are inspected. Values are deliberately never retrieved because
 # these variables may contain secrets.
 PSI_KEY_ENV_NAMES = (
@@ -1079,6 +1121,27 @@ def measurement_gaps(
     return gaps
 
 
+def access_gaps(
+    metrics: Sequence[str],
+    capability: str,
+    blocked_by: str,
+    tier: int,
+) -> List[Dict[str, object]]:
+    """Build deterministic, operator-supplyable gaps for one missing access tier."""
+
+    return [
+        {
+            "blocked_by": blocked_by,
+            "capability": capability,
+            "metric": metric,
+            "objective": "Measure {}.".format(metric),
+            "operator_can_supply": True,
+            "unlock": [ACCESS_TIER_UNLOCK_LABELS[tier]],
+        }
+        for metric in sorted(metrics)
+    ]
+
+
 def measurement_boundaries(
     access: Dict[str, AccessValue],
     tools: Dict[str, Dict[str, Union[bool, Optional[str]]]],
@@ -1110,11 +1173,33 @@ def measurement_boundaries(
                 "No browser-capable provider could be confirmed locally; check the agent's own tool list before concluding browser measurements are unavailable."
             )
     else:
+        public_access_metrics = set(PUBLIC_CAPABILITIES)
+        public_access_metrics.update(
+            label
+            for metric, label in OBJECTIVE_CAN_MEASURE_LABELS.items()
+            if objective_states[metric]["available"]
+        )
+        cannot_measure.extend(
+            access_gaps(
+                tuple(public_access_metrics),
+                PUBLIC_ACCESS_REQUIREMENT,
+                PUBLIC_ACCESS_BLOCKER,
+                0,
+            )
+        )
         notes.append("No public target was confirmed; public performance measurements are unavailable.")
 
     if access["wp_admin"] is True or access["wp_cli"] is True:
         available.update(ADMIN_CAPABILITIES)
     else:
+        cannot_measure.extend(
+            access_gaps(
+                ADMIN_CAPABILITIES,
+                ADMIN_ACCESS_REQUIREMENT,
+                ADMIN_ACCESS_BLOCKER,
+                1,
+            )
+        )
         notes.append(
             "No authenticated admin path or working WP-CLI install was confirmed; plugin, theme, and active caching inventory are unavailable."
         )
@@ -1122,6 +1207,14 @@ def measurement_boundaries(
     if access["wp_cli"] is True:
         available.update(CLI_CAPABILITIES)
     else:
+        cannot_measure.extend(
+            access_gaps(
+                CLI_CAPABILITIES,
+                CLI_ACCESS_REQUIREMENT,
+                CLI_ACCESS_BLOCKER,
+                2,
+            )
+        )
         notes.append(
             "WP-CLI was not exercised against a local install; database, query, cron, and object-cache measurements are unavailable."
         )
@@ -1129,11 +1222,23 @@ def measurement_boundaries(
     if access["deploy_path"] is True:
         available.add(CODE_CAPABILITY)
     else:
+        cannot_measure.extend(
+            access_gaps(
+                (CODE_CAPABILITY,),
+                CODE_ACCESS_REQUIREMENT,
+                CODE_ACCESS_BLOCKER,
+                3,
+            )
+        )
         notes.append(
             "No deploy path was confirmed; theme and plugin source attribution is unavailable."
         )
 
-    return sorted(available), cannot_measure, notes
+    return (
+        sorted(available),
+        sorted(cannot_measure, key=lambda gap: str(gap["metric"])),
+        notes,
+    )
 
 
 def build_profile(
