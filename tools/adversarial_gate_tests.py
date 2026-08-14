@@ -487,9 +487,11 @@ def main() -> int:
         expect_exit("confirmation CANNOT override a published prohibition",
                     [VALIDATE, cache_plan("wpengine", "wp-rocket", host_confirmation=confirmed),
                      "--preflight", "--quiet"], 1)
-        expect_exit("…nor GoDaddy's, now that its blocklist is cited",
-                    [VALIDATE, cache_plan("godaddy", "wp-rocket", host_confirmation=confirmed),
-                     "--preflight", "--quiet"], 1)
+        # There was a case here asserting confirmation could not override GoDaddy either. It was
+        # written while that entry read `prohibited`; the entry is back to `unconfirmable` because
+        # the class cannot establish which GoDaddy product a site is on, so confirmation overrides
+        # it again and the case was removed rather than left asserting a withdrawn policy. See
+        # docs/handoffs/godaddy-product-granularity.md.
         expect_exit("a confirmation with no checkable source is refused",
                     [VALIDATE, cache_plan("rocket-net", "wp-rocket",
                                           host_confirmation={"source": "", "scope": ""}),
@@ -499,7 +501,7 @@ def main() -> int:
                      "--preflight", "--quiet"], 1)
 
         print("\n=== validate_plan.py — page-cache policy governs adding, never removal ===")
-        # WP Engine and GoDaddy are published prohibitions; rocket-net is unconfirmable. Removal
+        # WP Engine is a published prohibition; godaddy and rocket-net are unconfirmable. Removal
         # must stay open in both lanes, while the paired add/enable operation stays closed.
         for host in ("wpengine", "godaddy", "rocket-net"):
             for removal, addition in zip(

@@ -69,7 +69,7 @@ the plugin category. Every unnamed product remains `UNCONFIRMABLE` and therefore
 | `wpengine` | **PROHIBITED** unless the exact plugin and caching feature are approved by WP Engine; listed page caches are disallowed. | **Yes:** first-party disallowed-plugin list. | Dashboard environment copy, SFTP, SSH, or GitPush may be in use. A later GitPush overwrites tracked direct edits. Confirm the site's authoritative path. |
 | `kinsta` | **PROHIBITED** unless Kinsta explicitly supports the exact integration; supported optimization plugins may have their page cache disabled. | **Yes:** first-party banned/incompatible list. | MyKinsta can push selected files or database content between environments. A push can overwrite production scope; confirm the selected scope. |
 | `siteground` | **PERMITTED ONLY:** `sg-optimizer` is the documented SiteGround path. Every other page-cache plugin is **UNCONFIRMABLE → PROHIBITED** until SiteGround confirms it. | **Unconfirmed:** confirm whether a list applies to the exact product. | Staging, Git, SSH, SFTP, and WP-CLI availability is product-dependent. Confirm the production deploy owner before editing files. |
-| `godaddy` | **PROHIBITED** on Managed Hosting for WordPress, which publishes a blocklist naming page-cache plugins, removes them on detection, and states the list is not exhaustive. For every other GoDaddy product, **UNCONFIRMABLE → PROHIBITED**. | **Yes:** first-party blocklist for Managed Hosting for WordPress; unconfirmed for the other products. | Managed-product staging can push files and optionally database content; SFTP and SSH/WP-CLI are plan-dependent. A staging sync can overwrite live data. |
+| `godaddy` | **UNCONFIRMABLE → PROHIBITED.** Managed Hosting for WordPress publishes a blocklist naming page caches and removes them on detection — treat that product as prohibited in practice — but this class cannot tell which GoDaddy product a site is on, so the confirmation route stays open. | **Yes for Managed Hosting for WordPress:** first-party blocklist, cited. Unconfirmed for the other products. | Managed-product staging can push files and optionally database content; SFTP and SSH/WP-CLI are plan-dependent. A staging sync can overwrite live data. |
 | `cloudways` | **PERMITTED ONLY:** `breeze` and the specifically documented WP Rocket integration. Every other page-cache plugin is **UNCONFIRMABLE → PROHIBITED**. | **Unconfirmed:** confirm whether a list applies to the application. | Confirm staging and the authoritative Git/SFTP/SSH workflow for the application. Do not assume a direct file edit survives the next deployment. |
 | `flywheel` | **PROHIBITED** for full-page caching. Flywheel documents server caching and lists caching plugins as unsupported/not recommended; optimization-only features require their cache feature to be off. | **Yes, but not a blanket ban:** first-party “not recommended plugins” list. | Dashboard staging/push and SSH/GitHub Actions may deploy code. Confirm which path owns production before editing. |
 | `pressable` | **PROHIBITED** for third-party full-page caching. Pressable owns read-only `advanced-cache.php` and `object-cache.php`; use its platform cache controls. | **Unconfirmed:** no blanket disallowed list is established here. | Staging, SFTP, and SSH are documented. Managed drop-ins are read-only; other PHP file-write permissions can be controlled by the platform. |
@@ -183,11 +183,12 @@ the plugin category. Every unnamed product remains `UNCONFIRMABLE` and therefore
   correct, so do not treat medium here as a reason to stop. The class does not distinguish Managed
   Hosting for WordPress, Web Hosting, WooCommerce, VPS, dedicated, or reseller products. Confirm the
   exact product before using any policy below.
-- **Page cache and policy list:** **PROHIBITED** on Managed Hosting for WordPress. GoDaddy publishes
-  a blocklist for that product and states that *"if we detect them installed on your account, they
-  will be removed."* Three of the page caches this project recognizes are named on it —
-  `w3-total-cache`, `wp-super-cache` and `wp-fastest-cache` — along with `hyper-cache`, `wp-cache`
-  and `wp-fast-cache`.
+- **Page cache and policy list:** **UNCONFIRMABLE → PROHIBITED**, with strong evidence for one
+  product. GoDaddy publishes a blocklist for Managed Hosting for WordPress and states that *"if we
+  detect them installed on your account, they will be removed."* Three of the page caches this
+  project recognizes are named on it — `w3-total-cache`, `wp-super-cache` and `wp-fastest-cache` —
+  along with `hyper-cache`, `wp-cache` and `wp-fast-cache`. **On that product, do not propose a
+  page-cache plugin.**
 
   **A page cache absent from that list is not thereby permitted.** GoDaddy says plainly that
   *"this is not an exhaustive list"* and that a plugin *"may be added to the list or disabled at any
@@ -197,23 +198,29 @@ the plugin category. Every unnamed product remains `UNCONFIRMABLE` and therefore
   verdict is `prohibited` rather than `permitted-only` on the six that happen not to be named.
   [blocklisted plugins](https://www.godaddy.com/help/blocklisted-plugins-8964)
 
-  **Scope, and why the whole class takes the strict verdict.** That page covers Managed Hosting for
-  WordPress. A separate blocklist exists for Managed Hosting for WooCommerce but could not be
-  retrieved while writing this entry (404, then 403 from an alternate locale), so nothing here is
-  cited to it.
+  **Why the verdict is `unconfirmable` and not `prohibited`, despite that evidence.** The blocklist
+  covers Managed Hosting for WordPress. A separate one exists for Managed Hosting for WooCommerce
+  but could not be retrieved while writing this entry (404, then 403 from an alternate locale), so
+  nothing here is cited to it.
 
-  `prohibited` applies to the entire `godaddy` class, and that is deliberate rather than sloppy —
-  but it has a real cost worth naming. **`prohibited` cannot be overridden by `host_confirmation`;
-  `unconfirmable` can.** So an operator on GoDaddy VPS or Web Hosting holding an explicit support
-  response permitting WP Rocket cannot spend it here. That is the correct trade only because of how
-  this class is *detected*: `fingerprint.py` keys on `x-gd-*` and `x-gateway-*`, which are Managed
-  WordPress platform markers. A GoDaddy VPS running its own nginx emits neither and does not land in
-  this class in the first place.
+  **This `host_class` cannot establish which GoDaddy product a site is on.** `detect_host` matches
+  `x-gd-*` and `x-gateway-*`, and *also* falls back to a hostname label, so a VPS or Web Hosting
+  site can be classed `godaddy` at low confidence with no Managed WordPress marker present. That
+  matters because of how the two verdicts differ downstream: **`prohibited` refuses
+  `host_confirmation` outright, `unconfirmable` does not**, and a plan declaring a `host_class` that
+  disagrees with the fingerprint is itself refused. So a `prohibited` verdict here would leave an
+  operator on a non-Managed product with no path at all — not a stricter path, none — and no way to
+  relabel out of it either.
 
-  **If you are on a non-Managed GoDaddy product**, this class is the wrong label for your site: the
-  markers do not describe you, and the policy above is not about your product. Declare `host_class`
-  as `self-managed` or `other` and confirm the plugin policy with GoDaddy for that product, where
-  `host_confirmation` works normally.
+  `unconfirmable` still refuses by default. It keeps the confirmation route open for the products
+  this evidence does not cover, which is the honest position: the evidence is about one product and
+  the class is about several. Fixing it properly needs product-level evidence in the schema —
+  tracked in [handoffs/godaddy-product-granularity.md](../../../docs/handoffs/godaddy-product-granularity.md).
+
+  An earlier revision of this entry set `prohibited` and told operators on other GoDaddy products to
+  declare `self-managed` instead. **That advice was wrong** — the fingerprint contradiction check
+  refuses a declared `host_class` that disagrees with it at any confidence — and it rested on a
+  claim about `detect_host` that was never checked against `detect_host`.
 
   As everywhere in this file, the verdict governs **adding** a page cache. Disabling, deactivating
   or removing one is exempt from this gate — a disallowed-plugin list cannot be violated by taking

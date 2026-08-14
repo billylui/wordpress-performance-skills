@@ -260,10 +260,23 @@ OBJECTIVE_CAN_MEASURE_LABELS = {
 
 # Human output explains the tri-state operator action without coercing unknown
 # to a negative verdict.
+# A gap is blocked either by a missing measurement PROVIDER or by a missing ACCESS TIER, and the
+# two are different asks at different moments: providers are known immediately and are raised at
+# SKILL.md step 2, access is raised at step 4b once tier-0 work can name the uncertainty it would
+# resolve. Without this discriminator both render as "ask the operator", and a consumer cannot tell
+# which conversation a gap belongs to.
+GAP_KIND_PROVIDER = "provider"
+GAP_KIND_ACCESS = "access"
+
+# Keyed by (kind, operator_can_supply). An access tier is not a provider, and telling an operator
+# to "supply a provider" when what is needed is wp-admin sends them looking for the wrong thing.
 OPERATOR_SUPPLY_REPORT = {
-    True: "yes — ask the operator for one of the listed providers",
-    False: "no — this gap is not something the operator can supply",
-    UNKNOWN: "unknown — check the agent's own tool list before asking the operator",
+    (GAP_KIND_PROVIDER, True): "yes — ask the operator for one of the listed providers",
+    (GAP_KIND_PROVIDER, False): "no — this gap is not something the operator can supply",
+    (GAP_KIND_PROVIDER, UNKNOWN): "unknown — check the agent's own tool list before asking the operator",
+    (GAP_KIND_ACCESS, True): "yes — ask the operator to grant this access, at SKILL.md step 4b once you can name what it would resolve",
+    (GAP_KIND_ACCESS, False): "no — this access is not the operator's to grant",
+    (GAP_KIND_ACCESS, UNKNOWN): "unknown — establish who controls this access before asking",
 }
 
 Origin = Tuple[str, str, int]
@@ -1114,7 +1127,8 @@ def measurement_gaps(
                 "capability": objective["capability"],
                 "metric": metric,
                 "objective": objective["objective"],
-                "operator_can_supply": objective["operator_can_supply"],
+                "kind": GAP_KIND_PROVIDER,
+            "operator_can_supply": objective["operator_can_supply"],
                 "unlock": unlock,
             }
         )
@@ -1133,6 +1147,7 @@ def access_gaps(
         {
             "blocked_by": blocked_by,
             "capability": capability,
+            "kind": GAP_KIND_ACCESS,
             "metric": metric,
             "objective": "Measure {}.".format(metric),
             "operator_can_supply": True,
@@ -1188,6 +1203,14 @@ def measurement_boundaries(
             )
         )
         notes.append("No public target was confirmed; public performance measurements are unavailable.")
+        # Without a target there is nothing to measure, so a provider gap that names only its
+        # provider is misleading: supplying Lighthouse would just reveal the missing URL on the next
+        # run. Name both prerequisites now rather than sending the operator round the loop twice.
+        for gap in cannot_measure:
+            if gap.get("kind") == GAP_KIND_PROVIDER:
+                gap["blocked_by"] = "no public target was supplied, so there is nothing to measure yet; and " + str(
+                    gap["blocked_by"]
+                )
 
     if access["wp_admin"] is True or access["wp_cli"] is True:
         available.update(ADMIN_CAPABILITIES)
@@ -1403,9 +1426,14 @@ def render_human(profile: Dict[str, object]) -> str:
             [
                 "  - {}: {}".format(gap["metric"], gap["objective"]),
                 "    Blocked by: {}".format(gap["blocked_by"]),
-                "    Unlock with: {}".format("; ".join(unlock)),
+                "    Unlock with: {} ({})".format(
+                    "; ".join(unlock),
+                    "access to grant" if gap.get("kind") == GAP_KIND_ACCESS else "provider to supply",
+                ),
                 "    Operator can supply: {}".format(
-                    OPERATOR_SUPPLY_REPORT[supply_status]
+                    OPERATOR_SUPPLY_REPORT[
+                        (gap.get("kind", GAP_KIND_PROVIDER), supply_status)
+                    ]
                 ),
             ]
         )
