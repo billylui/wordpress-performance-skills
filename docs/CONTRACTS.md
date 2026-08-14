@@ -331,6 +331,14 @@ Produced by `capabilities.py`. Decides the access tier and which measurement pat
       "blocked_by": "no PageSpeed Insights key is set in this session",
       "operator_can_supply": true,
       "unlock": ["PageSpeed Insights API (operator key)", "CrUX API"]
+    },
+    {
+      "metric": "LCP element attribution",
+      "objective": "Which element is the largest paint?",
+      "capability": "Browser that reports the LCP entry's element",
+      "blocked_by": "no browser provider could be confirmed from here; an MCP browser never appears on PATH",
+      "operator_can_supply": "unknown",
+      "unlock": ["Chrome DevTools MCP"]
     }
   ],
   "notes": ["No browser-capable tool found; Core Web Vitals cannot be measured in this session."]
@@ -355,12 +363,24 @@ Rules:
   [measurement-objectives.md](../skills/wp-perf-audit/references/measurement-objectives.md) that
   are not present in this session, best first, and `operator_can_supply`.
 
-  `operator_can_supply` is the field the whole structure exists for. It separates *ask them* from
-  *genuinely out of reach*: a PageSpeed key or a WP-CLI package is one message away, while CrUX data
-  for a site below Google's traffic threshold is nobody's to grant. A real audit ended with its
-  second-ranked finding unattributed because `wp profile` was not installed — something the operator
-  could have supplied in under a minute — and nothing ever asked. Reporting `unmeasured` was honest
-  and incomplete; honesty without a next step leaves the work undone.
+  `operator_can_supply` is the field the whole structure exists for: it says whether this gap is
+  worth raising with the operator. A PageSpeed key, a Lighthouse install or a WP-CLI package is one
+  message away and is `true`. A real audit ended with its second-ranked finding unattributed because
+  `wp profile` was not installed — one message — and nothing ever asked. Reporting `unmeasured` was
+  honest and incomplete; honesty without a next step leaves the work undone.
+
+  It takes `true`, `false`, or `"unknown"`, and **`"unknown"` is the right answer more often than it
+  looks.** A provider that cannot be confirmed from here — an MCP browser never appears on `PATH` —
+  is not thereby absent, and claiming the operator could supply it is as much a guess as claiming
+  they could not. `"unknown"` means *check your own tool list first*, which is the actual next step.
+
+  **`false` is not determinable from this document, and a local profile must not invent one.** The
+  obvious candidate — CrUX having no data because the site sits below Google's traffic threshold —
+  cannot be known without calling PSI, which this script does not do. That gap is real, but it
+  surfaces during measurement and belongs in the report as `unavailable` with its reason, which the
+  report contract already provides for. `false` is reserved here for a gap nothing could unlock, and
+  is expected to be rare. Emitting one on a presence-only reading would be exactly the confident
+  wrong answer invariant 3 exists to prevent.
 
   The entries are **derived from the objectives table**, not written per run, so two sessions on the
   same machine produce the same list. `capabilities.py` holds that table as a constant and
