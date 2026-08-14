@@ -295,7 +295,7 @@ Produced by `capabilities.py`. Decides the access tier and which measurement pat
 
 ```json
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "tool": "capabilities",
   "tool_version": "0.1.0",
   "generated_at": "2026-08-12T04:15:00Z",
@@ -315,7 +315,24 @@ Produced by `capabilities.py`. Decides the access tier and which measurement pat
   },
   "staging":        { "declared": false, "url": "unknown" },
   "can_measure":    ["origin-vs-edge TTFB", "payload weight", "render-blocking resources"],
-  "cannot_measure": ["autoloaded option size", "slow queries", "cron spikes"],
+  "cannot_measure": [
+    {
+      "metric": "LCP",
+      "objective": "How soon does the main content appear?",
+      "capability": "A real browser that reports paint timing, with the page visible",
+      "blocked_by": "no browser-capable provider was detected in this session",
+      "operator_can_supply": true,
+      "unlock": ["Chrome DevTools MCP", "Lighthouse CLI", "PageSpeed Insights API (operator key)"]
+    },
+    {
+      "metric": "Field data",
+      "objective": "What do real users experience?",
+      "capability": "Access to CrUX, via the PSI API or the CrUX API",
+      "blocked_by": "no PageSpeed Insights key is set in this session",
+      "operator_can_supply": true,
+      "unlock": ["PageSpeed Insights API (operator key)", "CrUX API"]
+    }
+  ],
   "notes": ["No browser-capable tool found; Core Web Vitals cannot be measured in this session."]
 }
 ```
@@ -329,8 +346,30 @@ Rules:
   must handle a non-integer `tier.value`.
 - An unauthenticated REST index proves the site is WordPress, **not** that the operator has
   admin access. It never on its own raises the tier above 0.
-- `can_measure` / `cannot_measure` are human-readable and mutually exclusive. Together they are
-  what the agent reports to the operator as the honest boundary of the audit.
+- `can_measure` / `cannot_measure` are mutually exclusive. Together they are what the agent reports
+  to the operator as the honest boundary of the audit.
+- **A `cannot_measure` entry says what would unlock it, because a boundary the operator cannot act
+  on is only half the message.** Each is an object: `metric` and `objective` naming what is blocked,
+  `capability` stating the requirement in the stable vocabulary rather than a tool name,
+  `blocked_by` saying what was actually missing, `unlock` listing the providers from
+  [measurement-objectives.md](../skills/wp-perf-audit/references/measurement-objectives.md) that
+  are not present in this session, best first, and `operator_can_supply`.
+
+  `operator_can_supply` is the field the whole structure exists for. It separates *ask them* from
+  *genuinely out of reach*: a PageSpeed key or a WP-CLI package is one message away, while CrUX data
+  for a site below Google's traffic threshold is nobody's to grant. A real audit ended with its
+  second-ranked finding unattributed because `wp profile` was not installed — something the operator
+  could have supplied in under a minute — and nothing ever asked. Reporting `unmeasured` was honest
+  and incomplete; honesty without a next step leaves the work undone.
+
+  The entries are **derived from the objectives table**, not written per run, so two sessions on the
+  same machine produce the same list. `capabilities.py` holds that table as a constant and
+  `tools/check_measurement_objectives.py` fails the build when the constant and the prose disagree —
+  the same arrangement as the host policy, for the same reason: two files stating one fact drift.
+- **The gap list never blocks the audit.** It is reported, and the run continues at whatever tier is
+  actually available. Tier 0 is a complete audit rather than a degraded one, and a checkpoint that
+  refused to proceed without more access would be a gate that fails the common case — this project
+  has already learned that such a gate gets argued around instead of obeyed.
 - `staging` records an operator declaration via `--staging-url`, never an inference. It is
   reported so the fix skill can choose a process, and its absence is a normal state rather than a
   problem: it is `{"declared": false, "url": "unknown"}` on most sites.
