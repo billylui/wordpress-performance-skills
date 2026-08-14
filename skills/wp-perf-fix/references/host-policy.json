@@ -5,6 +5,7 @@
   "authority": "host-constraints.md is the authoritative human document. Every verdict and citation here is transcribed from it, and tools/check_host_policy.py fails the build if the two disagree.",
   "limits": [
     "This covers a change whose target identifier is a RECOGNIZED page-cache plugin. A page cache published under a slug outside page_cache_plugins is not gated here and must still be checked against host-constraints.md by hand.",
+    "A container identifier such as active_plugins names no plugin, so the gate falls back to reading the change summary. A summary that names no page cache leaves the change permitted. Failing closed there was tried and reverted: it could not distinguish a summary naming nothing from one naming a plugin that is not a page cache, so it refused unrelated activations too. Closing this properly needs a structured field naming the plugin the change acts on. Meanwhile an activate is high-consequence, so approval.evidence.scope must name that operation and a human is asked for it by name.",
     "A verdict of permitted is never a claim that the change is safe or beneficial, only that the host does not forbid it. Host permission is not site suitability.",
     "Policies change. Re-open the cited document at execution time; a stale permissive verdict is the most damaging error this file can carry."
   ],

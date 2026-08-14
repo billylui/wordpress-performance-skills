@@ -510,6 +510,33 @@ def main() -> int:
                 "wpengine", "contact-form-7/wp-contact-form-7.php", "activate",
                 summary="Activate the unrelated contact-form plugin"),
              "--preflight", "--quiet"], 0)
+        # THE BOUNDARY OF THIS GATE, asserted so it stays visible rather than being rediscovered.
+        # `active_plugins` names no plugin, so the gate reads the summary. When the summary names
+        # no page cache either, the change is PERMITTED — this case documents that, and it is a
+        # limit, not a guarantee. Failing closed here was tried and reverted: it cannot tell "the
+        # summary names nothing" from "the summary names a plugin that is not a page cache", so it
+        # refused unrelated activations too, which is a blanket refusal of an ordinary case.
+        # Closing it properly needs a structured field naming the plugin. Recorded in
+        # host-policy.json's limits. What stands behind it meanwhile is the approval gate: an
+        # `activate` is high-consequence, so a human must approve that operation by name.
+        expect_exit(
+            "KNOWN LIMIT: a container activation naming no page cache is permitted",
+            [VALIDATE, cache_plan(
+                "wpengine", "active_plugins", "activate", kind="wp-option",
+                summary="Update the active plugin list"),
+             "--preflight", "--quiet"], 0)
+        expect_exit(
+            "…but naming the cache anywhere the gate can read it is still refused",
+            [VALIDATE, cache_plan(
+                "wpengine", "active_plugins", "activate", kind="wp-option",
+                summary="Add wp-rocket to the active plugin list"),
+             "--preflight", "--quiet"], 1)
+        expect_exit(
+            "CONTROL: that same named-cache container change is accepted as a removal",
+            [VALIDATE, cache_plan(
+                "wpengine", "active_plugins", "deactivate", kind="wp-option",
+                summary="Remove wp-rocket from the active plugin list"),
+             "--preflight", "--quiet"], 0)
 
         print("\n=== validate_plan.py — approval is a recorded attestation ===")
         expect_exit(

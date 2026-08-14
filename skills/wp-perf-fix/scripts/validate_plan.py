@@ -995,6 +995,20 @@ def validate_host_policy(
         if isinstance(summary, str):
             slug = page_cache_slug(summary, known)
     if slug is None:
+        # A container identifier like `active_plugins` names no plugin, so when its summary names
+        # no page cache either, this gate cannot tell an activation of a banned cache from any
+        # other plugin activation, and it permits the change.
+        #
+        # Failing closed here was tried and reverted. It cannot distinguish "the summary names
+        # nothing" from "the summary names a plugin that is not a page cache", so it refused every
+        # activation routed through `active_plugins` — including unrelated ones. That is the
+        # blanket refusal of an ordinary case this project has already learned gets argued around
+        # rather than obeyed, and the cure would be a structured field naming the plugin, not a
+        # broader guess from free text. Recorded as a known limit in `host-policy.json`.
+        #
+        # What stands behind it meanwhile: `activate` is a high-consequence operation, so
+        # `approval.evidence.scope` must name it, and no such change reaches production without a
+        # human being asked for that operation by name.
         return
 
     hosts = policy.get("hosts", {})
