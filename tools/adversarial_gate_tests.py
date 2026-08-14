@@ -745,6 +745,62 @@ def main() -> int:
                  tmp, "https://example.com/", cache_values={"server": "varnish"}),
              "--quiet"], 1)
 
+    print("\n=== capabilities.py — a gap names the prerequisite that is actionable NOW ===")
+    # The gap list is what the agent reads to the operator, so a gap naming the wrong prerequisite
+    # sends them to install a tool that cannot help. With no target, no provider can measure
+    # anything — the URL is the ask. An earlier fix prepended the target to the human `blocked_by`
+    # string and left `kind` and `unlock` naming providers, so anything reading the STRUCTURE was
+    # still told to install Lighthouse. These cases read only the structured fields, which is the
+    # thing that was wrong; a prose-only fix cannot pass them.
+    caps_mod = load_module("capabilities", CAPS)
+    _absent_tools = {n: {"present": False, "version": None} for n in
+                     ("curl", "python3", "lighthouse_cli", "chrome_devtools_mcp",
+                      "psi_api_key", "wp_cli")}
+
+    def gap_shape(public_url: bool):
+        access = {"public_url": public_url, "rest_api": False, "wp_admin": False,
+                  "wp_cli": False, "ssh": False, "deploy_path": False}
+        can, gaps, _ = caps_mod.measurement_boundaries(access, _absent_tools)
+        return can, gaps
+
+    _can_no_target, gaps_no_target = gap_shape(False)
+    tool_unlocks = [u for g in gaps_no_target for u in g["unlock"] if not u.startswith("Tier ")]
+    record(not tool_unlocks,
+           "with no target, no gap's unlock names a provider that cannot help",
+           f"tool names found in unlock: {tool_unlocks[:3]}")
+    record(all(g["kind"] == "access" for g in gaps_no_target),
+           "…and every gap is keyed as an access ask, not a provider ask",
+           f"kinds: {sorted({g['kind'] for g in gaps_no_target})}")
+    # Scoped to the objective metrics — the ones re-keyed from provider to access. The tier-1/2/3
+    # access gaps (slow queries, cron spikes) are blocked by their own tier and correctly say
+    # nothing about a target; asserting over all gaps would have been a test bug, not a finding.
+    objective_metrics = {o["metric"] for o in caps_mod.MEASUREMENT_OBJECTIVES}
+    rekeyed = [g for g in gaps_no_target if g["metric"] in objective_metrics]
+    record(bool(rekeyed) and all(
+               "target" in str(g["blocked_by"]) and "also needs" in str(g["blocked_by"])
+               for g in rekeyed),
+           "…while blocked_by names BOTH the missing target and the provider still to come",
+           f"{len(rekeyed)} re-keyed objective gap(s)")
+
+    # CONTROL. Without this, re-keying EVERY gap to `access` unconditionally would pass the three
+    # cases above while destroying the provider ask the step-2 checkpoint depends on.
+    can_target, gaps_target = gap_shape(True)
+    provider_gaps = [g["metric"] for g in gaps_target if g["kind"] == "provider"]
+    record(bool(provider_gaps),
+           "CONTROL: WITH a target, provider gaps still exist and still name providers",
+           f"provider gaps: {provider_gaps}")
+    record(any(not u.startswith("Tier ") for g in gaps_target for u in g["unlock"]),
+           "CONTROL: …and their unlock lists real tools, not a tier",
+           "tool names present in unlock")
+    # CONTROL. The contract calls the two lists mutually exclusive and jointly the audit's
+    # boundary; re-keying must not duplicate a metric into both or drop one out of both.
+    for label, (can, gaps) in (("no target", (_can_no_target, gaps_no_target)),
+                               ("with target", (can_target, gaps_target))):
+        metrics = [g["metric"] for g in gaps]
+        record(len(metrics) == len(set(metrics)) and not (set(can) & set(metrics)),
+               f"CONTROL: {label} — gaps are unique and disjoint from can_measure",
+               f"{len(metrics)} gaps, {len(can)} measurable, overlap {sorted(set(can) & set(metrics))}")
+
     print("\n=== capabilities.py — local evidence must belong to the audited installation ===")
     # The loopback fixture answers 200 on every path, so /site-a/ and /site-b/ are both reachable
     # and the only thing distinguishing them is the binding under test.

@@ -1203,14 +1203,25 @@ def measurement_boundaries(
             )
         )
         notes.append("No public target was confirmed; public performance measurements are unavailable.")
-        # Without a target there is nothing to measure, so a provider gap that names only its
-        # provider is misleading: supplying Lighthouse would just reveal the missing URL on the next
-        # run. Name both prerequisites now rather than sending the operator round the loop twice.
+        # Without a target, the provider is NOT the actionable prerequisite — the URL is. Supplying
+        # Lighthouse to a run with no site measures nothing and merely reveals the next blocker, so
+        # these re-key to the access ask entirely: kind, capability, unlock and operator_can_supply,
+        # not just the human string. An earlier revision prepended the target to `blocked_by` and
+        # left the structured fields naming providers, which meant anything reading the structure
+        # was still told to install a tool that could not help. The provider requirement is not
+        # lost: it is named in blocked_by, and the gap re-emits as a provider gap once a target
+        # exists, which is the order the operator actually has to satisfy them in.
         for gap in cannot_measure:
-            if gap.get("kind") == GAP_KIND_PROVIDER:
-                gap["blocked_by"] = "no public target was supplied, so there is nothing to measure yet; and " + str(
-                    gap["blocked_by"]
-                )
+            if gap.get("kind") != GAP_KIND_PROVIDER:
+                continue
+            gap["kind"] = GAP_KIND_ACCESS
+            gap["capability"] = PUBLIC_ACCESS_REQUIREMENT
+            gap["unlock"] = [ACCESS_TIER_UNLOCK_LABELS[0]]
+            gap["operator_can_supply"] = True
+            gap["blocked_by"] = (
+                "no public target was supplied, so there is nothing to measure yet; "
+                "once one is, this also needs: {}".format(gap["blocked_by"])
+            )
 
     if access["wp_admin"] is True or access["wp_cli"] is True:
         available.update(ADMIN_CAPABILITIES)

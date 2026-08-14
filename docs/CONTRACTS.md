@@ -320,9 +320,19 @@ Produced by `capabilities.py`. Decides the access tier and which measurement pat
       "metric": "LCP",
       "objective": "How soon does the main content appear?",
       "capability": "A real browser that reports paint timing, with the page visible",
+      "kind": "provider",
       "blocked_by": "no browser-capable provider was detected in this session",
       "operator_can_supply": true,
       "unlock": ["Chrome DevTools MCP", "Lighthouse CLI", "PageSpeed Insights API (operator key)"]
+    },
+    {
+      "metric": "slow queries",
+      "objective": "Measure slow queries.",
+      "capability": "WP-CLI against this installation",
+      "kind": "access",
+      "blocked_by": "WP-CLI was not exercised against this installation",
+      "operator_can_supply": true,
+      "unlock": ["Tier 2: cli"]
     },
     {
       "metric": "Field data",
@@ -362,6 +372,22 @@ Rules:
   `blocked_by` saying what was actually missing, `unlock` listing the providers from
   [measurement-objectives.md](../skills/wp-perf-audit/references/measurement-objectives.md) that
   are not present in this session, best first, and `operator_can_supply`.
+
+  **`kind` says which of the two operator conversations a gap belongs to**, and is `"provider"` or
+  `"access"`. A provider gap is a missing measurement tool — known immediately, raised at
+  `SKILL.md` step 2, because it changes what the measurement phase can produce. An access gap is a
+  missing tier — raised at step 4b, once tier-0 work can name the uncertainty it would resolve.
+  Without the discriminator both render as *ask the operator*, a tier-2 CLI gap reads as a tool to
+  install, and the two-checkpoint procedure has nothing to key on. `unlock` therefore holds provider
+  names on a provider gap and an access tier on an access gap — never the two mixed.
+
+  **A gap names the prerequisite that is actionable NOW, not the one furthest down the chain.**
+  When no public target has been confirmed, every objective that needs one reports as an `access`
+  gap with the target as its unlock, whatever its provider situation — because supplying Lighthouse
+  to a run with no URL measures nothing and merely reveals the next blocker. `blocked_by` says a
+  provider will also be needed, and the gap re-emits as a `provider` gap once a target exists. An
+  earlier revision named only the provider and mentioned the target in prose; that left anything
+  reading the structured fields being told to install a tool that could not help.
 
   `operator_can_supply` is the field the whole structure exists for: it says whether this gap is
   worth raising with the operator. A PageSpeed key, a Lighthouse install or a WP-CLI package is one
