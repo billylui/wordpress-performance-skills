@@ -48,10 +48,10 @@
       "citations": ["https://getflywheel.com/wordpress-support/what-plugins-are-not-recommended/"]
     },
     "godaddy": {
-      "page_cache": "unconfirmable",
+      "page_cache": "prohibited",
       "permitted_plugins": [],
-      "reason": "No blanket first-party page-cache allowance or disallowed-plugin list was confirmed across the products in this class. Ask GoDaddy about the exact product and plugin.",
-      "citations": []
+      "reason": "Managed Hosting for WordPress publishes a blocklist and removes blocklisted plugins on detection. It names w3-total-cache, wp-super-cache and wp-fastest-cache, plus hyper-cache, wp-cache and wp-fast-cache. A page cache absent from the list is not thereby permitted: GoDaddy states the list is not exhaustive and may be extended at any time, and one stated category is plugins duplicating functionality already in GoDaddy's system, which is what a page cache does on a product shipping its own gateway cache. No first-party allowance exists for any page-cache plugin. The other GoDaddy products in this class remain unconfirmable, which is the same refusal.",
+      "citations": ["https://www.godaddy.com/help/blocklisted-plugins-8964"]
     },
     "hostinger": {
       "page_cache": "permitted-with-conditions",
