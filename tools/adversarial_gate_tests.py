@@ -38,7 +38,6 @@ Exit codes: 0 all passed · 1 at least one gate failed
 from __future__ import annotations
 
 import http.server
-import importlib.util
 import json
 import os
 import pathlib
@@ -47,6 +46,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import types
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 PY = sys.executable or "python3"
@@ -76,10 +76,32 @@ HIGH_CONSEQUENCE_OPERATIONS = (
 
 
 def load_module(name: str, path: pathlib.Path):
-    """Import a script by path so its predicates can be exercised without the CLI."""
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    """Execute a script from its SOURCE so its predicates can be exercised without the CLI.
+
+    Deliberately not `spec_from_file_location` + `exec_module`, which consults the bytecode cache.
+    That cache is validated on the source's (mtime, size), and both can match a file that has
+    changed: editing a line to reorder two entries leaves the byte count identical, and a write
+    landing in the same clock second leaves the mtime identical too. Python then serves the stale
+    `.pyc`, and this suite reports on code that is not on disk.
+
+    That is not hypothetical — it happened while mutation-testing this repo's own checkers, and it
+    is the worst possible failure for a verification tool: a green run proving something about
+    bytecode nobody can read. CI hides it behind a fresh checkout with no `__pycache__`, so the
+    machine that would catch it is the one that never sees it.
+    """
+
+    source = path.read_text(encoding="utf-8")
+    module = types.ModuleType(name)
+    module.__file__ = str(path)
+    # Register before executing. `@dataclass` resolves its annotations through
+    # `sys.modules[cls.__module__]`, so a module absent from that table raises while the class body
+    # is still being built — which is how the loaded script fails, not this loader.
+    sys.modules[name] = module
+    try:
+        exec(compile(source, str(path), "exec"), module.__dict__)
+    except BaseException:
+        sys.modules.pop(name, None)
+        raise
     return module
 
 
