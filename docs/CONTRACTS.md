@@ -338,6 +338,7 @@ Produced by `capabilities.py`. Decides the access tier and which measurement pat
       "metric": "Field data",
       "objective": "What do real users experience?",
       "capability": "Access to CrUX, via the PSI API or the CrUX API",
+      "kind": "provider",
       "blocked_by": "no PageSpeed Insights key is set in this session",
       "operator_can_supply": true,
       "unlock": ["PageSpeed Insights API (operator key)", "CrUX API"]
@@ -346,6 +347,7 @@ Produced by `capabilities.py`. Decides the access tier and which measurement pat
       "metric": "LCP element attribution",
       "objective": "Which element is the largest paint?",
       "capability": "Browser that reports the LCP entry's element",
+      "kind": "provider",
       "blocked_by": "no browser provider could be confirmed from here; an MCP browser never appears on PATH",
       "operator_can_supply": "unknown",
       "unlock": ["Chrome DevTools MCP"]
@@ -369,9 +371,13 @@ Rules:
 - **A `cannot_measure` entry says what would unlock it, because a boundary the operator cannot act
   on is only half the message.** Each is an object: `metric` and `objective` naming what is blocked,
   `capability` stating the requirement in the stable vocabulary rather than a tool name,
-  `blocked_by` saying what was actually missing, `unlock` listing the providers from
-  [measurement-objectives.md](../skills/wp-perf-audit/references/measurement-objectives.md) that
-  are not present in this session, best first, and `operator_can_supply`.
+  `blocked_by` saying what was actually missing, `kind`, `unlock`, and `operator_can_supply`.
+
+  **`unlock` is defined by `kind`, and holds one or the other — never a mixture.** On a `provider`
+  gap it lists the providers from
+  [measurement-objectives.md](../skills/wp-perf-audit/references/measurement-objectives.md) that are
+  not present in this session, best first. On an `access` gap it names the access tier. Defining it
+  as "providers" unconditionally contradicted the access gaps the moment they existed.
 
   **`kind` says which of the two operator conversations a gap belongs to**, and is `"provider"` or
   `"access"`. A provider gap is a missing measurement tool — known immediately, raised at
