@@ -40,7 +40,7 @@ Both are in the capability-gap work. Tracked in
 |---|---|---|---|
 | Pre-ship | `b5557a1` | ran | 5, all P2, all fixed in `4ff25f0` |
 | Blast-radius | `2187aab` | ran | 3 — two fixed in `fafe639`, one a sibling → handed off |
-| `fafe639` | — | **not run** | loop stopped per protocol |
+| `fafe639` | `4ff25f0` | ran | 3 — 2 siblings → loop stopped, handed off; 1 falsehood fixed |
 
 ## Always-on rows
 
@@ -102,6 +102,6 @@ No quarantined rows.
 
 ## What this gate did not cover
 
-- **`fafe639` is unreviewed.** The blocker above.
+- **The two open findings above are unfixed**, by decision rather than oversight — see the handoff.
 - **No live `wp-perf-fix` write has ever been performed against a production host.** Unchanged by
   this shipment and tracked in `docs/handoffs/pre-publication.md`.
