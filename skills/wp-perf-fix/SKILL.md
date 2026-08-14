@@ -65,6 +65,11 @@ Write a change plan to disk before touching anything — schema in
 naming its catalog entry, risk lane, snapshot artifact, purge layers, and the metric it is
 expected to move.
 
+**`target.operation` says what you are doing to the target** — `configure`, `enable`, `disable`,
+`install`, `activate`, `deactivate`, `remove`, `update` or `replace`. It is not decoration: two
+gates read it. Getting it wrong in the safe-looking direction is the error to avoid — calling an
+activation a `configure` is how a change walks past the host gate.
+
 State `expected_effect` **before** the change. Deciding afterwards what counts as success is how
 a change that did nothing gets recorded as a win.
 
@@ -79,8 +84,14 @@ do not edit the validator to make a plan pass. If validation is wrong, the plan 
 
 Preflight checks everything knowable before anyone is asked to approve: the document shape, no
 prohibited change for this host, a risk lane appropriate to the change kind, a resolvable catalog
-entry, a tier sufficient for that kind, purge layers matching the cache layers actually detected,
-an `expected_effect`, and that the `--stack` profile really belongs to the site in the plan.
+entry, a tier sufficient for that kind, purge layers the stack profile supports, an
+`expected_effect`, and that the `--stack` profile really belongs to the site in the plan.
+
+**A layer the fingerprint left `unknown` can still be purged — with evidence.** `fingerprint.py`
+reads public HTTP, and a managed host's gateway cache or a server-side object cache does not appear
+there. Record what a higher tier proved as `operator_confirmed` on that stack entry and the plan may
+declare and purge it. What is still refused is contradicting the probe: a layer it positively found
+cannot be declared absent, and one it found as `none` cannot be declared present.
 
 **The validator derives what safety a change requires; it never reads that from the plan.** A
 plan declaring it needs no approval or no snapshot is refused rather than obeyed — a document
@@ -97,6 +108,18 @@ changes may go direct to production and which are staging-first, and
 [references/staging.md](references/staging.md) for how the loop differs with and without a staging
 environment.
 
+**Then write down what you were told.** `approval.evidence` takes a `source` — where the consent is
+recorded, so a human can go and read it back — and a `scope` saying what was actually agreed to. For
+`install`, `activate`, `deactivate`, `remove`, `update` and `replace`, the scope must name the
+operation, and the validator refuses the change otherwise; a general approval must not be spendable
+on deactivating a plugin.
+
+This does not make the tool the gate. **A file cannot verify that a human consented, and this one
+does not pretend to** — you could write anything here. What it refuses is a bare `granted: true`,
+which is the plan asserting its own compliance. Recording whose approval and for what turns that
+into an attestation someone can check later, and makes a fabricated one a deliberate act rather than
+a default. The last gate before a production write is you.
+
 ### 4. Snapshot
 
 Capture the artifact named in the plan and confirm it exists before proceeding. See
@@ -111,9 +134,13 @@ incident. Verify the file, do not assume the command worked.
 python3 "$SKILL_DIR/scripts/validate_plan.py" plan.json --stack stack.json
 ```
 
-The same checks as preflight, plus the two that can only be true by now: approval actually
-granted, and the snapshot artifact actually present and non-empty on disk. This is the last gate
+The same checks as preflight, plus the ones that can only be true by now: approval granted and
+carrying its evidence, that evidence naming the operation when the operation is a consequential
+one, and the snapshot artifact actually present and non-empty on disk. This is the last gate
 before anything changes, and it is the one that catches a snapshot step that silently did nothing.
+
+Know what it does **not** check: that the snapshot's contents are a valid backup of the right
+thing, and that a human really approved. Both are yours.
 
 ### 5. Apply
 
@@ -186,8 +213,18 @@ These are refusals, not preferences.
    [references/host-policy.json](references/host-policy.json) and refuses the plan — you do not have
    to remember, and you cannot talk it out of a published prohibition. Where a host's policy is
    merely unconfirmed, obtain confirmation for the exact product and plugin and record it on the
-   change as `host_confirmation` with a `source` a human could go and check. Every other change kind
-   is still yours to check against the reference.
+   change as `host_confirmation` with a `source` a human could go and check.
+
+   It matches the plugin in the change's **identifier**, whatever the `target.kind` — a settings
+   key, a plugin basename, or `active_plugins`, which is a `wp-option` and is where WordPress
+   actually stores activation. Renaming the change does not move it out of scope.
+
+   **Removal is never gated.** `disable`, `deactivate` and `remove` pass on every host, including
+   the ones with published prohibitions. A disallowed-plugin list exists to stop a cache being
+   added, and cannot be violated by taking one away. This matters in practice: on a host that
+   prohibits page caches, turning an inert cache plugin off is often exactly the right fix, and a
+   gate that refused it would just get argued around. Every other change kind, and every cache
+   shipped under a slug this file does not recognize, is still yours to check against the reference.
 2. **No change without a verified snapshot.** If the snapshot cannot be captured, the change does
    not happen.
 3. **No change without per-change approval.** Never infer consent from an earlier approval, from
@@ -196,6 +233,13 @@ These are refusals, not preferences.
    plugin or theme updates; database schema changes; deletion of any content or media; credential
    changes; DNS or CDN configuration; or a backup restore. Each needs explicit direction at the
    point of action.
+
+   Two halves of this are now mechanical. DNS/CDN and server configuration have no sufficient
+   access tier, so the validator routes them to the operator rather than letting a plan claim them.
+   And a change whose `target.operation` is `install`, `activate`, `deactivate`, `remove`, `update`
+   or `replace` is refused unless `approval.evidence.scope` names that operation. Until that
+   existed, this whole gate rested on the agent remembering it — which is the shape this project
+   keeps finding and calling a documented refusal with no script behind it.
 5. **A code change needs staging or a stated plan for surviving without it.** Theme, plugin and
    core code changes can fatal a site, so they are never applied casually to production. But **most
    WordPress sites have no staging**, and refusing to work on them would make this skill unused
