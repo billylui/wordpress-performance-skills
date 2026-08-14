@@ -295,7 +295,7 @@ Produced by `capabilities.py`. Decides the access tier and which measurement pat
 
 ```json
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "tool": "capabilities",
   "tool_version": "0.1.0",
   "generated_at": "2026-08-12T04:15:00Z",
@@ -315,7 +315,44 @@ Produced by `capabilities.py`. Decides the access tier and which measurement pat
   },
   "staging":        { "declared": false, "url": "unknown" },
   "can_measure":    ["origin-vs-edge TTFB", "payload weight", "render-blocking resources"],
-  "cannot_measure": ["autoloaded option size", "slow queries", "cron spikes"],
+  "cannot_measure": [
+    {
+      "metric": "LCP",
+      "objective": "How soon does the main content appear?",
+      "capability": "A real browser that reports paint timing, with the page visible",
+      "kind": "provider",
+      "blocked_by": "no browser-capable provider was detected in this session",
+      "operator_can_supply": true,
+      "unlock": ["Chrome DevTools MCP", "Lighthouse CLI", "PageSpeed Insights API (operator key)"]
+    },
+    {
+      "metric": "slow queries",
+      "objective": "Measure slow queries.",
+      "capability": "WP-CLI against this installation",
+      "kind": "access",
+      "blocked_by": "WP-CLI was not exercised against this installation",
+      "operator_can_supply": true,
+      "unlock": ["Tier 2: cli"]
+    },
+    {
+      "metric": "Field data",
+      "objective": "What do real users experience?",
+      "capability": "Access to CrUX, via the PSI API or the CrUX API",
+      "kind": "provider",
+      "blocked_by": "no PageSpeed Insights key is set in this session",
+      "operator_can_supply": true,
+      "unlock": ["PageSpeed Insights API (operator key)", "CrUX API"]
+    },
+    {
+      "metric": "LCP element attribution",
+      "objective": "Which element is the largest paint?",
+      "capability": "Browser that reports the LCP entry's element",
+      "kind": "provider",
+      "blocked_by": "no browser provider could be confirmed from here; an MCP browser never appears on PATH",
+      "operator_can_supply": "unknown",
+      "unlock": ["Chrome DevTools MCP"]
+    }
+  ],
   "notes": ["No browser-capable tool found; Core Web Vitals cannot be measured in this session."]
 }
 ```
@@ -329,8 +366,62 @@ Rules:
   must handle a non-integer `tier.value`.
 - An unauthenticated REST index proves the site is WordPress, **not** that the operator has
   admin access. It never on its own raises the tier above 0.
-- `can_measure` / `cannot_measure` are human-readable and mutually exclusive. Together they are
-  what the agent reports to the operator as the honest boundary of the audit.
+- `can_measure` / `cannot_measure` are mutually exclusive. Together they are what the agent reports
+  to the operator as the honest boundary of the audit.
+- **A `cannot_measure` entry says what would unlock it, because a boundary the operator cannot act
+  on is only half the message.** Each is an object: `metric` and `objective` naming what is blocked,
+  `capability` stating the requirement in the stable vocabulary rather than a tool name,
+  `blocked_by` saying what was actually missing, `kind`, `unlock`, and `operator_can_supply`.
+
+  **`unlock` is defined by `kind`, and holds one or the other — never a mixture.** On a `provider`
+  gap it lists the providers from
+  [measurement-objectives.md](../skills/wp-perf-audit/references/measurement-objectives.md) that are
+  not present in this session, best first. On an `access` gap it names the access tier. Defining it
+  as "providers" unconditionally contradicted the access gaps the moment they existed.
+
+  **`kind` says which of the two operator conversations a gap belongs to**, and is `"provider"` or
+  `"access"`. A provider gap is a missing measurement tool — known immediately, raised at
+  `SKILL.md` step 2, because it changes what the measurement phase can produce. An access gap is a
+  missing tier — raised at step 4b, once tier-0 work can name the uncertainty it would resolve.
+  Without the discriminator both render as *ask the operator*, a tier-2 CLI gap reads as a tool to
+  install, and the two-checkpoint procedure has nothing to key on. `unlock` therefore holds provider
+  names on a provider gap and an access tier on an access gap — never the two mixed.
+
+  **A gap names the prerequisite that is actionable NOW, not the one furthest down the chain.**
+  When no public target has been confirmed, every objective that needs one reports as an `access`
+  gap with the target as its unlock, whatever its provider situation — because supplying Lighthouse
+  to a run with no URL measures nothing and merely reveals the next blocker. `blocked_by` says a
+  provider will also be needed, and the gap re-emits as a `provider` gap once a target exists. An
+  earlier revision named only the provider and mentioned the target in prose; that left anything
+  reading the structured fields being told to install a tool that could not help.
+
+  `operator_can_supply` is the field the whole structure exists for: it says whether this gap is
+  worth raising with the operator. A PageSpeed key, a Lighthouse install or a WP-CLI package is one
+  message away and is `true`. A real audit ended with its second-ranked finding unattributed because
+  `wp profile` was not installed — one message — and nothing ever asked. Reporting `unmeasured` was
+  honest and incomplete; honesty without a next step leaves the work undone.
+
+  It takes `true`, `false`, or `"unknown"`, and **`"unknown"` is the right answer more often than it
+  looks.** A provider that cannot be confirmed from here — an MCP browser never appears on `PATH` —
+  is not thereby absent, and claiming the operator could supply it is as much a guess as claiming
+  they could not. `"unknown"` means *check your own tool list first*, which is the actual next step.
+
+  **`false` is not determinable from this document, and a local profile must not invent one.** The
+  obvious candidate — CrUX having no data because the site sits below Google's traffic threshold —
+  cannot be known without calling PSI, which this script does not do. That gap is real, but it
+  surfaces during measurement and belongs in the report as `unavailable` with its reason, which the
+  report contract already provides for. `false` is reserved here for a gap nothing could unlock, and
+  is expected to be rare. Emitting one on a presence-only reading would be exactly the confident
+  wrong answer invariant 3 exists to prevent.
+
+  The entries are **derived from the objectives table**, not written per run, so two sessions on the
+  same machine produce the same list. `capabilities.py` holds that table as a constant and
+  `tools/check_measurement_objectives.py` fails the build when the constant and the prose disagree —
+  the same arrangement as the host policy, for the same reason: two files stating one fact drift.
+- **The gap list never blocks the audit.** It is reported, and the run continues at whatever tier is
+  actually available. Tier 0 is a complete audit rather than a degraded one, and a checkpoint that
+  refused to proceed without more access would be a gate that fails the common case — this project
+  has already learned that such a gate gets argued around instead of obeyed.
 - `staging` records an operator declaration via `--staging-url`, never an inference. It is
   reported so the fix skill can choose a process, and its absence is a normal state rather than a
   problem: it is `{"declared": false, "url": "unknown"}` on most sites.

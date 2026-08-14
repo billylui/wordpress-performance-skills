@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 TOOL_VERSION = "0.1.0"
 
 # Five seconds is ample for local version/configuration probes without letting a
@@ -76,6 +76,209 @@ HTTP_SUCCESS_MAX_EXCLUSIVE = 400
 UNKNOWN = "unknown"
 TIER_NAMES = {0: "public", 1: "admin", 2: "cli", 3: "code"}
 
+# Provider-state vocabulary separates a confirmed local absence from a provider
+# that this presence-only script cannot inspect, such as an MCP browser.
+PROVIDER_PRESENT = "present"
+PROVIDER_ABSENT = "absent"
+PROVIDER_UNCONFIRMABLE = "unconfirmable"
+
+# Provider names reproduce the human source exactly. They are constants because
+# the wording is shared by gap detection, unlock guidance, and the drift checker.
+CHROME_DEVTOOLS_MCP_PROVIDER = "Chrome DevTools MCP"
+LIGHTHOUSE_CLI_PROVIDER = "Lighthouse CLI"
+PAGESPEED_OPERATOR_KEY_PROVIDER = "PageSpeed Insights API (operator key)"
+PERFORMANCE_OBSERVER_BROWSER_PROVIDER = (
+    "any browser automation exposing PerformanceObserver"
+)
+CHROME_INTERACTION_PROVIDER = "Chrome DevTools MCP with a driven interaction"
+PSI_CRUX_FIELD_PROVIDER = "field data from PSI/CrUX"
+PSI_API_PROVIDER = "PSI API"
+PERF_PROBE_ALWAYS_PROVIDER = (
+    "perf-probe.py (bundled — always available where this skill runs)"
+)
+PERF_PROBE_PROVIDER = "perf-probe.py (bundled)"
+FINGERPRINT_PROVIDER = "fingerprint.py (bundled)"
+LCP_ENTRY_BROWSER_PROVIDER = (
+    "browser automation reading the largest-contentful-paint entry"
+)
+CRUX_API_PROVIDER = "CrUX API"
+
+# Metric names are stable schema vocabulary shared by the objectives constant,
+# gap explanations, and the backward-compatible can_measure labels.
+METRIC_LCP = "LCP"
+METRIC_INP = "INP"
+METRIC_CLS = "CLS"
+METRIC_TTFB = "TTFB, origin and edge"
+METRIC_PAYLOAD = "Transferred bytes, requests"
+METRIC_STACK = "Stack profile"
+METRIC_LCP_ELEMENT = "LCP element attribution"
+METRIC_FIELD_DATA = "Field data"
+
+# This is the machine-readable copy of the authoritative table at
+# skills/wp-perf-audit/references/measurement-objectives.md, section "The
+# objectives". Keep every row, exact wording, and provider order in agreement
+# with that human source; tools/check_measurement_objectives.py enforces drift.
+MEASUREMENT_OBJECTIVES = (
+    {
+        "objective": "How soon does the main content appear?",
+        "metric": METRIC_LCP,
+        "capability": "A real browser that reports paint timing, with the page visible",
+        "providers": (
+            CHROME_DEVTOOLS_MCP_PROVIDER,
+            LIGHTHOUSE_CLI_PROVIDER,
+            PAGESPEED_OPERATOR_KEY_PROVIDER,
+            PERFORMANCE_OBSERVER_BROWSER_PROVIDER,
+        ),
+        "operator_can_supply": True,
+    },
+    {
+        "objective": "How responsive is it to input?",
+        "metric": METRIC_INP,
+        "capability": "A browser plus a real interaction; a load-only pass cannot produce it",
+        "providers": (
+            CHROME_INTERACTION_PROVIDER,
+            PSI_CRUX_FIELD_PROVIDER,
+        ),
+        "operator_can_supply": True,
+    },
+    {
+        "objective": "How much does layout jump?",
+        "metric": METRIC_CLS,
+        "capability": "A browser that reports layout-shift entries",
+        "providers": (
+            CHROME_DEVTOOLS_MCP_PROVIDER,
+            LIGHTHOUSE_CLI_PROVIDER,
+            PSI_API_PROVIDER,
+        ),
+        "operator_can_supply": True,
+    },
+    {
+        "objective": "How long does the server take to respond?",
+        "metric": METRIC_TTFB,
+        "capability": "HTTP client that can time first byte and set a cache-buster",
+        "providers": (PERF_PROBE_ALWAYS_PROVIDER,),
+        "operator_can_supply": UNKNOWN,
+    },
+    {
+        "objective": "How heavy is the page?",
+        "metric": METRIC_PAYLOAD,
+        "capability": "HTTP client that can walk referenced resources",
+        "providers": (PERF_PROBE_PROVIDER,),
+        "operator_can_supply": UNKNOWN,
+    },
+    {
+        "objective": "What is the site built on?",
+        "metric": METRIC_STACK,
+        "capability": "HTTP client",
+        "providers": (FINGERPRINT_PROVIDER,),
+        "operator_can_supply": UNKNOWN,
+    },
+    {
+        "objective": "Which element is the largest paint?",
+        "metric": METRIC_LCP_ELEMENT,
+        "capability": "Browser that reports the LCP entry's element",
+        "providers": (
+            CHROME_DEVTOOLS_MCP_PROVIDER,
+            LCP_ENTRY_BROWSER_PROVIDER,
+        ),
+        "operator_can_supply": UNKNOWN,
+    },
+    {
+        "objective": "What do real users experience?",
+        "metric": METRIC_FIELD_DATA,
+        "capability": "Access to CrUX, via PSI API or the CrUX API",
+        "providers": (
+            PAGESPEED_OPERATOR_KEY_PROVIDER,
+            CRUX_API_PROVIDER,
+        ),
+        "operator_can_supply": True,
+    },
+)
+
+# Provider groups define what a local presence check can prove. Bundled tools
+# are intrinsic to the skill; MCP, agent-browser, and CrUX API availability must
+# instead be checked in the caller's own tool/session state.
+BUNDLED_MEASUREMENT_PROVIDERS = (
+    PERF_PROBE_ALWAYS_PROVIDER,
+    PERF_PROBE_PROVIDER,
+    FINGERPRINT_PROVIDER,
+)
+CHROME_MCP_MEASUREMENT_PROVIDERS = (
+    CHROME_DEVTOOLS_MCP_PROVIDER,
+    CHROME_INTERACTION_PROVIDER,
+)
+LIGHTHOUSE_MEASUREMENT_PROVIDERS = (LIGHTHOUSE_CLI_PROVIDER,)
+PAGESPEED_KEY_MEASUREMENT_PROVIDERS = (
+    PAGESPEED_OPERATOR_KEY_PROVIDER,
+    PSI_CRUX_FIELD_PROVIDER,
+    PSI_API_PROVIDER,
+)
+LOCALLY_UNCONFIRMABLE_MEASUREMENT_PROVIDERS = (
+    PERFORMANCE_OBSERVER_BROWSER_PROVIDER,
+    LCP_ENTRY_BROWSER_PROVIDER,
+    CRUX_API_PROVIDER,
+)
+
+# Gap explanations name the session evidence, not merely the capability. Each
+# message is emitted only after all providers for that metric failed to reach
+# PROVIDER_PRESENT, so its named local absences are known to apply.
+BLOCKED_BY_METRIC = {
+    METRIC_LCP: (
+        "Lighthouse CLI is not installed on PATH and no PageSpeed Insights key is set; "
+        "browser providers could not be confirmed locally, so check the agent's own tool list"
+    ),
+    METRIC_INP: (
+        "no PageSpeed Insights key is set; interaction-capable MCP and CrUX field-data "
+        "providers could not be confirmed locally, so check the agent's own tool list"
+    ),
+    METRIC_CLS: (
+        "Lighthouse CLI is not installed on PATH and no PageSpeed Insights key is set; "
+        "an MCP browser could not be confirmed locally, so check the agent's own tool list"
+    ),
+    METRIC_LCP_ELEMENT: (
+        "no browser provider could be confirmed from here; MCP and agent browser tools never "
+        "appear on PATH, so check the agent's own tool list"
+    ),
+    METRIC_FIELD_DATA: (
+        "no PageSpeed Insights key is set; a CrUX API provider could not be confirmed by this "
+        "local presence check"
+    ),
+}
+
+# Objective metrics use the established can_measure vocabulary so schema 1.1
+# remains compatible with consumers of the pre-existing reachable list.
+OBJECTIVE_CAN_MEASURE_LABELS = {
+    METRIC_LCP: "Largest Contentful Paint (LCP)",
+    METRIC_INP: "Interaction to Next Paint (INP)",
+    METRIC_CLS: "Cumulative Layout Shift (CLS)",
+    METRIC_TTFB: "origin-vs-edge TTFB",
+    METRIC_PAYLOAD: "payload weight",
+    METRIC_STACK: "public stack fingerprint",
+    METRIC_LCP_ELEMENT: METRIC_LCP_ELEMENT,
+    METRIC_FIELD_DATA: METRIC_FIELD_DATA,
+}
+
+# Human output explains the tri-state operator action without coercing unknown
+# to a negative verdict.
+# A gap is blocked either by a missing measurement PROVIDER or by a missing ACCESS TIER, and the
+# two are different asks at different moments: providers are known immediately and are raised at
+# SKILL.md step 2, access is raised at step 4b once tier-0 work can name the uncertainty it would
+# resolve. Without this discriminator both render as "ask the operator", and a consumer cannot tell
+# which conversation a gap belongs to.
+GAP_KIND_PROVIDER = "provider"
+GAP_KIND_ACCESS = "access"
+
+# Keyed by (kind, operator_can_supply). An access tier is not a provider, and telling an operator
+# to "supply a provider" when what is needed is wp-admin sends them looking for the wrong thing.
+OPERATOR_SUPPLY_REPORT = {
+    (GAP_KIND_PROVIDER, True): "yes — ask the operator for one of the listed providers",
+    (GAP_KIND_PROVIDER, False): "no — this gap is not something the operator can supply",
+    (GAP_KIND_PROVIDER, UNKNOWN): "unknown — check the agent's own tool list before asking the operator",
+    (GAP_KIND_ACCESS, True): "yes — ask the operator to grant this access, at SKILL.md step 4b once you can name what it would resolve",
+    (GAP_KIND_ACCESS, False): "no — this access is not the operator's to grant",
+    (GAP_KIND_ACCESS, UNKNOWN): "unknown — establish who controls this access before asking",
+}
+
 Origin = Tuple[str, str, int]
 AccessValue = Union[bool, str]
 
@@ -101,16 +304,48 @@ CLI_CAPABILITIES = (
     "slow queries",
 )
 CODE_CAPABILITY = "theme and plugin source attribution"
+
+# Access gaps name the minimum tier that unlocks the capability, rather than a
+# provider binary. Requirements use the stable access vocabulary operators see
+# in the capability report.
+PUBLIC_ACCESS_REQUIREMENT = "a confirmed public URL"
+ADMIN_ACCESS_REQUIREMENT = "authenticated wp-admin"
+CLI_ACCESS_REQUIREMENT = "WP-CLI against this installation"
+CODE_ACCESS_REQUIREMENT = "a confirmed deploy path"
+ACCESS_TIER_UNLOCK_LABELS = {
+    0: "Tier 0: public",
+    1: "Tier 1: admin",
+    2: "Tier 2: cli",
+    3: "Tier 3: code",
+}
+
+# These explanations report only what the presence checks established: the
+# access path was not exercised or confirmed, never that it cannot exist.
+PUBLIC_ACCESS_BLOCKER = "no public target was confirmed in this session"
+ADMIN_ACCESS_BLOCKER = (
+    "authenticated wp-admin or WP-CLI access was not exercised against this installation"
+)
+CLI_ACCESS_BLOCKER = "WP-CLI was not exercised against this installation"
+CODE_ACCESS_BLOCKER = "no deploy path was confirmed for this installation"
+
+# The public target is a prerequisite for every objective-driven measurement,
+# including browser and field paths. De-duplicate labels already present in the
+# public tuple while preserving a deterministic capability vocabulary.
+PUBLIC_SESSION_CAPABILITIES = tuple(
+    sorted(set(PUBLIC_CAPABILITIES + tuple(OBJECTIVE_CAN_MEASURE_LABELS.values())))
+)
+# This is the complete set whose availability the script reports. It is derived
+# from the existing tier tuples so capability labels have one source of truth.
 AUDIT_CAPABILITIES = tuple(
     sorted(
-        PUBLIC_CAPABILITIES
-        + BROWSER_CAPABILITIES
-        + ADMIN_CAPABILITIES
-        + CLI_CAPABILITIES
-        + (CODE_CAPABILITY,)
+        set(
+            PUBLIC_SESSION_CAPABILITIES
+            + ADMIN_CAPABILITIES
+            + CLI_CAPABILITIES
+            + (CODE_CAPABILITY,)
+        )
     )
 )
-
 # Only names are inspected. Values are deliberately never retrieved because
 # these variables may contain secrets.
 PSI_KEY_ENV_NAMES = (
@@ -824,38 +1059,181 @@ def determine_tier(
     return {"confidence": "none", "evidence": [], "name": UNKNOWN, "value": UNKNOWN}
 
 
+def measurement_provider_state(
+    provider: str,
+    tools: Dict[str, Dict[str, Union[bool, Optional[str]]]],
+) -> str:
+    """Return what a presence-only local check can establish for one provider."""
+
+    if provider in BUNDLED_MEASUREMENT_PROVIDERS:
+        return PROVIDER_PRESENT
+    if provider in CHROME_MCP_MEASUREMENT_PROVIDERS:
+        if tools["chrome_devtools_mcp"]["present"]:
+            return PROVIDER_PRESENT
+        return PROVIDER_UNCONFIRMABLE
+    if provider in LIGHTHOUSE_MEASUREMENT_PROVIDERS:
+        if tools["lighthouse_cli"]["present"]:
+            return PROVIDER_PRESENT
+        return PROVIDER_ABSENT
+    if provider in PAGESPEED_KEY_MEASUREMENT_PROVIDERS:
+        if tools["psi_api_key"]["present"]:
+            return PROVIDER_PRESENT
+        return PROVIDER_ABSENT
+    if provider in LOCALLY_UNCONFIRMABLE_MEASUREMENT_PROVIDERS:
+        return PROVIDER_UNCONFIRMABLE
+    raise ValueError("no presence rule exists for measurement provider {!r}".format(provider))
+
+
+def measurement_objective_states(
+    tools: Dict[str, Dict[str, Union[bool, Optional[str]]]],
+) -> Dict[str, Dict[str, object]]:
+    """Return deterministic provider evidence for every measurement objective."""
+
+    objective_states: Dict[str, Dict[str, object]] = {}
+    for objective in MEASUREMENT_OBJECTIVES:
+        providers = objective["providers"]
+        assert isinstance(providers, tuple)
+        states = [measurement_provider_state(provider, tools) for provider in providers]
+        objective_states[objective["metric"]] = {
+            "available": PROVIDER_PRESENT in states,
+            "states": states,
+        }
+    return objective_states
+
+
+def measurement_gaps(
+    objective_states: Dict[str, Dict[str, object]],
+) -> List[Dict[str, object]]:
+    """Build actionable gaps only for objectives with no present provider."""
+
+    gaps: List[Dict[str, object]] = []
+    for objective in MEASUREMENT_OBJECTIVES:
+        metric = objective["metric"]
+        state = objective_states[metric]
+        if state["available"]:
+            continue
+        providers = objective["providers"]
+        provider_states = state["states"]
+        assert isinstance(providers, tuple)
+        assert isinstance(provider_states, list)
+        unlock = [
+            provider
+            for provider, provider_state in zip(providers, provider_states)
+            if provider_state != PROVIDER_PRESENT
+        ]
+        gaps.append(
+            {
+                "blocked_by": BLOCKED_BY_METRIC[metric],
+                "capability": objective["capability"],
+                "metric": metric,
+                "objective": objective["objective"],
+                "kind": GAP_KIND_PROVIDER,
+            "operator_can_supply": objective["operator_can_supply"],
+                "unlock": unlock,
+            }
+        )
+    return gaps
+
+
+def access_gaps(
+    metrics: Sequence[str],
+    capability: str,
+    blocked_by: str,
+    tier: int,
+) -> List[Dict[str, object]]:
+    """Build deterministic, operator-supplyable gaps for one missing access tier."""
+
+    return [
+        {
+            "blocked_by": blocked_by,
+            "capability": capability,
+            "kind": GAP_KIND_ACCESS,
+            "metric": metric,
+            "objective": "Measure {}.".format(metric),
+            "operator_can_supply": True,
+            "unlock": [ACCESS_TIER_UNLOCK_LABELS[tier]],
+        }
+        for metric in sorted(metrics)
+    ]
+
+
 def measurement_boundaries(
     access: Dict[str, AccessValue],
     tools: Dict[str, Dict[str, Union[bool, Optional[str]]]],
-) -> Tuple[List[str], List[str], List[str]]:
-    """Partition the complete audit surface into available and unavailable lists."""
+) -> Tuple[List[str], List[Dict[str, object]], List[str]]:
+    """Report reachable measurements and actionable provider gaps."""
 
     available = set()
     notes: List[str] = []
-    lighthouse_available = bool(tools["lighthouse_cli"]["present"])
-    interactive_browser_available = bool(tools["chrome_devtools_mcp"]["present"])
+    objective_states = measurement_objective_states(tools)
+    cannot_measure = measurement_gaps(objective_states)
 
     if access["public_url"] is True:
         available.update(PUBLIC_CAPABILITIES)
-        if interactive_browser_available:
-            available.update(BROWSER_CAPABILITIES)
-        elif lighthouse_available:
-            available.update(
-                ("Cumulative Layout Shift (CLS)", "Largest Contentful Paint (LCP)")
-            )
+        for metric, label in OBJECTIVE_CAN_MEASURE_LABELS.items():
+            if objective_states[metric]["available"]:
+                available.add(label)
+
+        if objective_states[METRIC_INP]["available"]:
+            pass
+        elif (
+            objective_states[METRIC_LCP]["available"]
+            or objective_states[METRIC_CLS]["available"]
+        ):
             notes.append(
-                "Lighthouse can measure lab LCP and CLS, but it cannot establish INP without a real interaction path."
+                "The confirmed providers can measure LCP or CLS, but cannot establish INP without a real interaction or field-data path."
             )
         else:
             notes.append(
-                "No browser-capable tool found; Core Web Vitals cannot be measured in this session."
+                "No browser-capable provider could be confirmed locally; check the agent's own tool list before concluding browser measurements are unavailable."
             )
     else:
+        public_access_metrics = set(PUBLIC_CAPABILITIES)
+        public_access_metrics.update(
+            label
+            for metric, label in OBJECTIVE_CAN_MEASURE_LABELS.items()
+            if objective_states[metric]["available"]
+        )
+        cannot_measure.extend(
+            access_gaps(
+                tuple(public_access_metrics),
+                PUBLIC_ACCESS_REQUIREMENT,
+                PUBLIC_ACCESS_BLOCKER,
+                0,
+            )
+        )
         notes.append("No public target was confirmed; public performance measurements are unavailable.")
+        # Without a target, the provider is NOT the actionable prerequisite — the URL is. Supplying
+        # Lighthouse to a run with no site measures nothing and merely reveals the next blocker, so
+        # these re-key to the access ask entirely: kind, capability, unlock and operator_can_supply,
+        # not just the human string. An earlier revision prepended the target to `blocked_by` and
+        # left the structured fields naming providers, which meant anything reading the structure
+        # was still told to install a tool that could not help. The provider requirement is not
+        # lost: it is named in blocked_by, and the gap re-emits as a provider gap once a target
+        # exists, which is the order the operator actually has to satisfy them in.
+        for gap in cannot_measure:
+            if gap.get("kind") != GAP_KIND_PROVIDER:
+                continue
+            gap["kind"] = GAP_KIND_ACCESS
+            gap["capability"] = PUBLIC_ACCESS_REQUIREMENT
+            gap["unlock"] = [ACCESS_TIER_UNLOCK_LABELS[0]]
+            gap["operator_can_supply"] = True
+            gap["blocked_by"] = (
+                "no public target was supplied, so there is nothing to measure yet; "
+                "once one is, this also needs: {}".format(gap["blocked_by"])
+            )
 
     if access["wp_admin"] is True or access["wp_cli"] is True:
         available.update(ADMIN_CAPABILITIES)
     else:
+        cannot_measure.extend(
+            access_gaps(
+                ADMIN_CAPABILITIES,
+                ADMIN_ACCESS_REQUIREMENT,
+                ADMIN_ACCESS_BLOCKER,
+                1,
+            )
+        )
         notes.append(
             "No authenticated admin path or working WP-CLI install was confirmed; plugin, theme, and active caching inventory are unavailable."
         )
@@ -863,6 +1241,14 @@ def measurement_boundaries(
     if access["wp_cli"] is True:
         available.update(CLI_CAPABILITIES)
     else:
+        cannot_measure.extend(
+            access_gaps(
+                CLI_CAPABILITIES,
+                CLI_ACCESS_REQUIREMENT,
+                CLI_ACCESS_BLOCKER,
+                2,
+            )
+        )
         notes.append(
             "WP-CLI was not exercised against a local install; database, query, cron, and object-cache measurements are unavailable."
         )
@@ -870,13 +1256,23 @@ def measurement_boundaries(
     if access["deploy_path"] is True:
         available.add(CODE_CAPABILITY)
     else:
+        cannot_measure.extend(
+            access_gaps(
+                (CODE_CAPABILITY,),
+                CODE_ACCESS_REQUIREMENT,
+                CODE_ACCESS_BLOCKER,
+                3,
+            )
+        )
         notes.append(
             "No deploy path was confirmed; theme and plugin source attribution is unavailable."
         )
 
-    can_measure = sorted(available)
-    cannot_measure = sorted(set(AUDIT_CAPABILITIES) - available)
-    return can_measure, cannot_measure, notes
+    return (
+        sorted(available),
+        sorted(cannot_measure, key=lambda gap: str(gap["metric"])),
+        notes,
+    )
 
 
 def build_profile(
@@ -1031,7 +1427,27 @@ def render_human(profile: Dict[str, object]) -> str:
     if not can_measure:
         lines.append("  - none confirmed")
     lines.extend(["", "Cannot measure:"])
-    lines.extend("  - {}".format(item) for item in cannot_measure)  # type: ignore[union-attr]
+    assert isinstance(cannot_measure, list)
+    for gap in cannot_measure:
+        assert isinstance(gap, dict)
+        unlock = gap["unlock"]
+        assert isinstance(unlock, list)
+        supply_status = gap["operator_can_supply"]
+        lines.extend(
+            [
+                "  - {}: {}".format(gap["metric"], gap["objective"]),
+                "    Blocked by: {}".format(gap["blocked_by"]),
+                "    Unlock with: {} ({})".format(
+                    "; ".join(unlock),
+                    "access to grant" if gap.get("kind") == GAP_KIND_ACCESS else "provider to supply",
+                ),
+                "    Operator can supply: {}".format(
+                    OPERATOR_SUPPLY_REPORT[
+                        (gap.get("kind", GAP_KIND_PROVIDER), supply_status)
+                    ]
+                ),
+            ]
+        )
     if not cannot_measure:
         lines.append("  - none")
     lines.extend(["", "Notes:"])

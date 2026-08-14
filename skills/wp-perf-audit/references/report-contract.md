@@ -196,6 +196,13 @@ The reason has to say what was actually missing, because the fixes differ:
 | `not available` | `no browser-capable tool in this session` |
 | `could not measure` | `browser pane hidden; visibilityState was "hidden", so no paint entries were recorded` |
 | `n/a` | `load-only pass; INP needs a driven interaction` |
+| `no access` | `operator declined to install Lighthouse; asked at step 2` |
+
+**Say so when the gap was one the operator could have closed.** `capabilities.py` flags which
+blocked measurements an operator could supply, and the skill asks about those once. If the answer
+was no, the reason says so. *"Nobody looked"* and *"we asked and they declined"* are different
+facts: the first invites the next session to repeat the work, the second settles it. This costs one
+clause and it is the difference between a boundary and a decision.
 
 [measurement-objectives.md](measurement-objectives.md) states, per metric, the capability required,
 the providers in preference order, and the honest answer when none is available. Read it when

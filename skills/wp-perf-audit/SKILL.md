@@ -81,6 +81,27 @@ python3 "$SKILL_DIR/scripts/capabilities.py" --target <URL> --json /tmp/caps.jso
 Gives the confirmed tier and, more importantly, `can_measure` and `cannot_measure`. Those two
 lists are the audit's honest boundary and belong in the report verbatim.
 
+**Then say the boundary out loud, before you spend an hour measuring.** Each `cannot_measure` entry
+names what is blocked and what would unlock it, and flags whether the operator could supply it. Read
+back the ones where `operator_can_supply` is true — a PageSpeed key, a Lighthouse install, a browser
+tool — and ask once:
+
+> This session has no browser that reports paint timing, so LCP, CLS and the LCP element will come
+> back `unmeasured`. If you can run Lighthouse locally or give me a PageSpeed Insights key, those
+> rows become real numbers. If not, I will audit everything else and say plainly which rows nobody
+> could measure.
+
+**Ask once, then proceed either way.** Do not re-ask, do not stall, and never make access a
+condition of starting. Tier 0 is a complete audit. This is worth doing here rather than at the end
+because it changes what the measurement phase can even produce — and worth doing *only* for provider
+gaps, which are known now. Access-tier gaps are a different conversation at a different moment: see
+step 4b.
+
+Record what the operator said. A row nobody could measure and a row the operator declined to unlock
+are different facts, and the report's `Source` cell should say which — `no browser-capable tool in
+this session` versus `operator declined to install Lighthouse`. The second tells the next reader the
+question was asked and settled.
+
 **A local WordPress checkout never raises the tier on its own.** Nothing about a directory on
 this disk proves it is the site at that address, and getting it wrong would claim WP-CLI or
 deploy access to a site the operator cannot touch. When the operator confirms the checkout is the
@@ -172,6 +193,25 @@ they are to fix. Three findings that matter beat twelve that do not.
 The recurring lesson from real campaigns: **the largest wins are usually configuration, not
 assets.** A font nothing references. An animation holding the largest element invisible. Neither
 is visible to file-size analysis, and both outrank compressing an image.
+
+### 4b. Ask, once, for the access that would close a named gap
+
+By now you know which findings are unattributed and why. **That is the moment to ask for more
+access — not before.** A request made at step 2 is speculative and gets a no; a request that names
+the specific uncertainty, the smallest access that resolves it, the read-only check you would run,
+and what the operator gets back is a different conversation. Templates and the plain-language
+phrasing for a non-developer operator are in
+[references/access-tiers.md](references/access-tiers.md#how-to-ask-for-the-next-tier).
+
+A real audit ended with its second-ranked finding — the whole question of where the origin time
+went — unattributed because `wp profile` was not installed. That is one message to the operator, and
+nobody sent it. The audit was honest about the gap and stopped there, which is half the job:
+**reporting a boundary the operator could have moved, without telling them they could move it, leaves
+the work undone.**
+
+Ask for one thing at a time, name what it buys, and take no for an answer the first time. Then
+record the outcome in the report, because "we asked and they declined" and "nobody looked" are
+different states and only one of them is worth revisiting later.
 
 ### 5. Report
 

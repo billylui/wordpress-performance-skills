@@ -68,6 +68,12 @@ jobs:
         # hand an operator a change their host forbids.
         run: python tools/check_host_policy.py
 
+      - name: Measurement objectives agree with their human document
+        # The prose file is authoritative and ordered; the constant is the half capabilities.py
+        # can use. Two files stating the same objectives drift, and the omission direction would
+        # silently remove a gap the operator should have been told how to unlock.
+        run: python tools/check_measurement_objectives.py
+
       - name: Change-plan validator self-test
         # The fix skill's gate is a safety device. If its own refusals stop working, every other
         # guarantee in wp-perf-fix rests on nothing.

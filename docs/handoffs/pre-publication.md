@@ -48,11 +48,17 @@ judged proportionate rather than worth recreating the repository. If that judgem
 revisiting, the options are asking GitHub Support to garbage-collect unreachable objects, or
 pushing the clean history into a fresh repository.
 
-### 2. `wp-perf-fix` has never run against a production host
+### 2. `wp-perf-fix` has never *applied a change* to a production host
 
-**Problem:** the guarded write loop is exercised only against local fixtures and unit-level
-gates. Its host-constraint tables, purge paths and rollback procedures have not been executed on
-a real managed host.
+**Update, 2026-08-14:** its read-only half now has. A tier-3 dry run against a live GoDaddy Managed
+WordPress site exercised the plan → preflight → readiness sequence for real, with six adversarial
+plans built from that site's own facts; five were refused, each naming a distinct rule. That run is
+what produced escaped-bug rows WP-ESC-12 through WP-ESC-14 and the two open handoffs. **No write,
+snapshot, purge or rollback has been executed against production** — the half below is unchanged.
+
+**Problem:** the write half of the guarded loop is exercised only against local fixtures and
+unit-level gates. Purge paths and rollback procedures have not been executed on a real managed host,
+and the host-constraint tables have now been *read* in anger but never *acted* on.
 
 **Why it matters:** this is the half that changes production sites. The catalog's per-host purge
 instructions in particular are documentation-derived, not execution-verified.

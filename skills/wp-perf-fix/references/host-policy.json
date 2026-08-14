@@ -49,9 +49,9 @@
       "citations": ["https://getflywheel.com/wordpress-support/what-plugins-are-not-recommended/"]
     },
     "godaddy": {
-      "page_cache": "prohibited",
+      "page_cache": "unconfirmable",
       "permitted_plugins": [],
-      "reason": "Managed Hosting for WordPress publishes a blocklist and removes blocklisted plugins on detection. It names w3-total-cache, wp-super-cache and wp-fastest-cache, plus hyper-cache, wp-cache and wp-fast-cache. A page cache absent from the list is not thereby permitted: GoDaddy states the list is not exhaustive and may be extended at any time, and one stated category is plugins duplicating functionality already in GoDaddy's system, which is what a page cache does on a product shipping its own gateway cache. No first-party allowance exists for any page-cache plugin. The other GoDaddy products in this class remain unconfirmable, which is the same refusal.",
+      "reason": "Managed Hosting for WordPress publishes a blocklist and removes blocklisted plugins on detection, naming w3-total-cache, wp-super-cache and wp-fastest-cache among others, and states the list is not exhaustive. That is strong evidence and it is cited below. The verdict is nevertheless unconfirmable rather than prohibited, because this host_class cannot establish WHICH GoDaddy product a site is on: detect_host matches x-gd-* and x-gateway-* headers and also falls back to a hostname label, so a VPS or Web Hosting site can be classed godaddy at low confidence. prohibited refuses host_confirmation outright, and a declared host_class that disagrees with the fingerprint is itself refused, so a prohibited verdict here would leave an operator on a non-Managed product no path at all. Unconfirmable still refuses by default; it keeps the confirmation route open for the products this evidence does not cover. Treat Managed Hosting for WordPress as prohibited in practice and do not propose a page-cache plugin there. See docs/handoffs/godaddy-product-granularity.md.",
       "citations": ["https://www.godaddy.com/help/blocklisted-plugins-8964"]
     },
     "hostinger": {
