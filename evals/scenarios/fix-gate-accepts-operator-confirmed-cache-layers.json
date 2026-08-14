@@ -1,0 +1,24 @@
+{
+  "expected_behavior": [
+    "Keeps the tier-0 public readings for the server and object cache layers at unknown while recording the tier-2 findings in operator_confirmed fields on those same stack-profile entries",
+    "Records the host gateway as operator-confirmed server value other and the object cache as operator-confirmed value redis, each with the supplied WP-CLI evidence, tier, and confirmed_by provenance",
+    "Builds a change plan that declares exactly server and object in cache_layers_present and includes the server layer in purge_layers because the confirmed host gateway holds the stale copy",
+    "Treats operator confirmation as evidence that fills public unknowns rather than as permission to invent a positive public-probe finding",
+    "contains: operator_confirmed",
+    "contains: purge_layers"
+  ],
+  "files": [],
+  "fixture": "none",
+  "id": "fix-gate-accepts-operator-confirmed-cache-layers",
+  "must_not": [
+    "Drops the server layer from cache_layers_present or purge_layers merely because the public probe could not identify it",
+    "Asserts either hidden cache layer into the plan without first recording its higher-tier evidence in operator_confirmed, or overwrites the public unknown reading with the operator finding",
+    "Recommends installing, activating, trialing, or configuring a page-cache plugin on this managed host",
+    "not_contains: install the page-cache plugin anyway",
+    "not_contains: purge_layers is empty"
+  ],
+  "query": "Use wp-perf-fix to prepare, but not execute, a production configuration change. The schema-version 1.1 stack profile identifies managed hosting and has all four cache-layer entries in fixed order. Its public readings are edge: unknown, server: unknown, page-plugin: unknown, and object: unknown, each with confidence none and empty public evidence. The public response carries only a house cache header that the server-layer detector does not recognize, while the object cache emits no public signal at all. WP-CLI at tier 2 then proved that the host gateway cache is enabled and holds the stale copy, and that Redis object caching is connected. Preserve the public readings and record the gateway on the server entry as operator_confirmed {value: other, tier: 2, evidence: [wp-cli: host gateway cache status reports enabled and serving the stale response], confirmed_by: WP-CLI over SSH in the operator session}; record Redis on the object entry as operator_confirmed {value: redis, tier: 2, evidence: [wp-cli: object cache status reports Redis connected], confirmed_by: WP-CLI over SSH in the operator session}. Then state the cache_layers_present and purge_layers required in the change plan, explaining how the evidence supports them. No per-change execution approval has been granted yet.",
+  "skills": [
+    "wp-perf-fix"
+  ]
+}

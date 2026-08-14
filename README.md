@@ -10,10 +10,16 @@ Give it more access and it can fix what it found, safely, with a rollback for ev
 
 **It knows which hosts will delete your cache plugin.** Ask most tools why a WordPress site is
 slow and sooner or later they suggest installing WP Rocket. On WP Engine, Kinsta, Pressable,
-Flywheel, Bluehost and WordPress.com that advice is worse than useless — those hosts publish
-disallowed-plugin lists and *remove* the plugin from your site. This one refuses the change,
-against a table of all 17 host classes with a first-party citation per verdict, and routes you to
-the host's own caching controls instead. A plan cannot talk its way past it.
+Flywheel, Bluehost, GoDaddy and WordPress.com that advice is worse than useless — those hosts
+publish disallowed-plugin lists and *remove* the plugin from your site. This one refuses the
+change, against a table of all 17 host classes, and routes you to the host's own caching controls
+instead. A plan cannot talk its way past it — and it cannot get past by renaming the change
+either, because the gate reads what is being done, not what kind of thing it is done to.
+
+Every host whose policy is documented carries a first-party citation. The rest are refused as
+unconfirmable rather than guessed at, which is the honest state for a host nobody has researched
+yet and is the only direction it is safe to be wrong in. **Removing or disabling a cache is never
+gated** — a disallowed-plugin list cannot be violated by taking the plugin away.
 
 **An unmeasured metric says so, with a reason.** Every report opens with the same ten rows — LCP,
 INP, CLS, FCP, TBT, Speed Index, TTFB origin and edge, page weight, requests. When the session has

@@ -60,6 +60,21 @@ FINGERPRINT = REPO / "skills/wp-perf-audit/scripts/fingerprint.py"
 # to exercise.
 CACHE_LAYERS = ("edge", "server", "page-plugin", "object")
 
+# These are the only operations exempt from the page-cache host-policy gate: they remove or turn
+# off a cache rather than adding one.
+PAGE_CACHE_REMOVAL_OPERATIONS = ("disable", "deactivate", "remove")
+
+# These ordinary add/turn-on operations are paired with the removal cases so deleting the entire
+# page-cache gate cannot make the operation-scope tests pass vacuously.
+PAGE_CACHE_ADDITION_OPERATIONS = ("enable", "activate", "install")
+
+# The change-plan contract requires approval scope to name each of these operations because their
+# consequences reach beyond performance configuration.
+HIGH_CONSEQUENCE_OPERATIONS = (
+    "install", "activate", "deactivate", "remove", "update", "replace",
+)
+
+
 def load_module(name: str, path: pathlib.Path):
     """Import a script by path so its predicates can be exercised without the CLI."""
     spec = importlib.util.spec_from_file_location(name, path)
@@ -135,9 +150,20 @@ def write_plan(tmp: pathlib.Path, *, site="https://example.com", tier=3,
         "summary": "drop unused font preload",
         "catalog_entry": "frontend/fonts-preloaded-unused.md",
         "risk_lane": "staging-first",
-        "target": {"kind": "theme-file", "identifier": "functions.php"},
+        "target": {
+            "kind": "theme-file",
+            "identifier": "functions.php",
+            "operation": "configure",
+        },
         "snapshot": {"required": True, "artifact": str(snap)},
-        "approval": {"required": True, "granted": True},
+        "approval": {
+            "required": True,
+            "granted": True,
+            "evidence": {
+                "source": "Operator message recorded in the adversarial test fixture",
+                "scope": "Configure the unused font preload in functions.php",
+            },
+        },
         "purge_layers": ["page-plugin"],
         "expected_effect": {
             "metric": "total_kb",
@@ -157,7 +183,7 @@ def write_plan(tmp: pathlib.Path, *, site="https://example.com", tier=3,
     }
     change.update(over.pop("change", {}))
     plan = {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "tool": "change-plan",
         "tool_version": "0.1.0",
         "generated_at": "2026-08-12T00:00:00Z",
@@ -170,41 +196,64 @@ def write_plan(tmp: pathlib.Path, *, site="https://example.com", tier=3,
     }
     plan.update(over)
     path = tmp / "plan.json"
-    path.write_text(json.dumps(plan))
+    path.write_text(json.dumps(plan, sort_keys=True))
     return path
 
 
 def write_stack(tmp: pathlib.Path, target: str, host="self-managed",
-                host_confidence="high") -> pathlib.Path:
+                host_confidence="high", cache_values=None,
+                operator_confirmed=None) -> pathlib.Path:
     """A CONTRACT-VALID fingerprint. Every field but the target matches the plan, so a refusal
     can only come from the target binding under test."""
+    values = {
+        "edge": "none",
+        "server": "none",
+        "page-plugin": "wp-rocket",
+        "object": "none",
+    }
+    values.update(cache_values or {})
+    confirmations = operator_confirmed or {}
+    profile = {
+        field: {"value": "unknown", "confidence": "none", "evidence": []}
+        for field in (
+            "is_wordpress", "wp_version", "builder", "theme_slug", "theme_type", "server",
+            "php_version", "cdn", "multilingual", "woocommerce", "multisite",
+        )
+    }
+    profile["host_class"] = {
+        "value": host,
+        "confidence": host_confidence,
+        "evidence": [] if host == "unknown" else ["header: fixture host-class signal"],
+    }
+
+    cache_layers = []
+    for layer in CACHE_LAYERS:
+        value = values[layer]
+        entry = {
+            "layer": layer,
+            "value": value,
+            "confidence": "none" if value == "unknown" else "high",
+            "evidence": [] if value == "unknown" else [
+                "probe: fixture positively establishes the cache-layer value"
+            ],
+        }
+        if layer in confirmations:
+            entry["operator_confirmed"] = confirmations[layer]
+        cache_layers.append(entry)
+
     stack = {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "tool": "fingerprint",
         "tool_version": "0.1.0",
         "generated_at": "2026-08-12T00:00:00Z",
         "target": target,
         "pages_probed": [target],
         "notes": [],
-        "profile": {
-            "host_class": {
-                "value": host,
-                "confidence": host_confidence,
-                "evidence": [] if host == "unknown" else ["header: x"],
-            }
-        },
-        "cache_layers": [
-            {
-                "layer": layer,
-                "value": "wp-rocket" if layer == "page-plugin" else "none",
-                "confidence": "high",
-                "evidence": ["header: x"],
-            }
-            for layer in CACHE_LAYERS
-        ],
+        "profile": profile,
+        "cache_layers": cache_layers,
     }
-    path = tmp / f"stack-{abs(hash((target, host, host_confidence)))}.json"
-    path.write_text(json.dumps(stack))
+    path = tmp / "stack.json"
+    path.write_text(json.dumps(stack, sort_keys=True))
     return path
 
 
@@ -266,7 +315,8 @@ def main() -> int:
         expect_exit(
             "wp-option change at tier 1",
             [VALIDATE, write_plan(tmp, tier=1, change={
-                "target": {"kind": "wp-option", "identifier": "x"}, "risk_lane": "direct"}), "--quiet"], 1)
+                "target": {"kind": "wp-option", "identifier": "x", "operation": "configure"},
+                "risk_lane": "direct"}), "--quiet"], 1)
 
         pending = write_plan(tmp, change={
             "approval": {"required": True, "granted": False},
@@ -289,7 +339,11 @@ def main() -> int:
             return write_plan(tmp, tier=3, **over)
 
         def db_plan(**over) -> pathlib.Path:
-            change = {"target": {"kind": "wp-option", "identifier": "some_option"},
+            change = {"target": {
+                          "kind": "wp-option",
+                          "identifier": "some_option",
+                          "operation": "configure",
+                      },
                       "risk_lane": "direct"}
             change.update(over.pop("change", {}))
             return write_plan(tmp, tier=2, change=change, **over)
@@ -332,7 +386,8 @@ def main() -> int:
         # real dependencies. What is refused is an unordered pile: a queue nobody sequenced.
         two = [
             {"id": "c1", "summary": "first", "catalog_entry": "frontend/fonts-preloaded-unused.md",
-             "risk_lane": "direct", "target": {"kind": "wp-option", "identifier": "a"},
+             "risk_lane": "direct", "target": {
+                 "kind": "wp-option", "identifier": "a", "operation": "configure"},
              "snapshot": {"required": True, "artifact": str(tmp / "snap.bak")},
              "approval": {"required": True, "granted": True}, "purge_layers": ["page-plugin"],
              "expected_effect": {"metric": "total_kb", "url": "https://example.com/",
@@ -355,12 +410,18 @@ def main() -> int:
         # change was refused only when the plan had already written risk_lane 'prohibited'. A plan
         # declaring host_class wpengine while activating WP Rocket — a page cache WP Engine's own
         # disallowed list forbids — passed with zero problems. Taxonomy row WP-ESC-07.
-        def cache_plan(host: str, plugin: str, **extra) -> pathlib.Path:
-            change = {"target": {"kind": "plugin-setting", "identifier": plugin},
-                      "risk_lane": "direct",
+        def cache_plan(host: str, plugin: str, operation="configure",
+                       kind="plugin-setting", **extra) -> pathlib.Path:
+            change = {"target": {
+                          "kind": kind,
+                          "identifier": plugin,
+                          "operation": operation,
+                      },
+                      "risk_lane": "staging-first" if kind == "plugin-file" else "direct",
                       "catalog_entry": "caching/page-cache-missing-or-bypassed.md"}
             change.update(extra)
-            return write_plan(tmp, tier=2, host_class=host, change=change)
+            tier = 3 if kind == "plugin-file" else 2
+            return write_plan(tmp, tier=tier, host_class=host, change=change)
 
         # CONTROLS FIRST. Without these, every refusal below would also pass against a gate that
         # simply rejected all page-cache changes, which would be useless rather than safe.
@@ -386,30 +447,185 @@ def main() -> int:
                     [VALIDATE, cache_plan("kinsta", "wp-rocket"), "--preflight", "--quiet"], 1)
         expect_exit("a page cache siteground does not document is refused",
                     [VALIDATE, cache_plan("siteground", "wp-rocket"), "--preflight", "--quiet"], 1)
+        # `rocket-net`, not `godaddy`, is the unconfirmable example here. GoDaddy WAS one until its
+        # entry was researched and found to carry a published blocklist, at which point every case
+        # below silently changed meaning — the confirmation case started failing and the other
+        # three kept passing for the wrong reason, since a prohibition refuses them too. Pick the
+        # host from the verdict the case is about, and a policy edit cannot quietly hollow it out.
         expect_exit("an unconfirmable host refuses a page cache by default",
-                    [VALIDATE, cache_plan("godaddy", "wp-rocket"), "--preflight", "--quiet"], 1)
+                    [VALIDATE, cache_plan("rocket-net", "wp-rocket"), "--preflight", "--quiet"], 1)
 
         # The escape hatch, and its two limits. Without the hatch the gate would brick every audit
         # on the hosts that need it most; without the limits it would be a bypass.
-        confirmed = {"source": "GoDaddy support ticket 1234567",
-                     "scope": "Managed WordPress, WP Rocket activation on this account"}
+        confirmed = {"source": "Rocket.net support ticket 1234567",
+                     "scope": "this hosting product, WP Rocket activation on this account"}
         expect_exit("operator confirmation unblocks an UNCONFIRMABLE host",
-                    [VALIDATE, cache_plan("godaddy", "wp-rocket", host_confirmation=confirmed),
+                    [VALIDATE, cache_plan("rocket-net", "wp-rocket", host_confirmation=confirmed),
                      "--preflight", "--quiet"], 0)
         expect_exit("confirmation CANNOT override a published prohibition",
                     [VALIDATE, cache_plan("wpengine", "wp-rocket", host_confirmation=confirmed),
                      "--preflight", "--quiet"], 1)
+        expect_exit("…nor GoDaddy's, now that its blocklist is cited",
+                    [VALIDATE, cache_plan("godaddy", "wp-rocket", host_confirmation=confirmed),
+                     "--preflight", "--quiet"], 1)
         expect_exit("a confirmation with no checkable source is refused",
-                    [VALIDATE, cache_plan("godaddy", "wp-rocket",
+                    [VALIDATE, cache_plan("rocket-net", "wp-rocket",
                                           host_confirmation={"source": "", "scope": ""}),
                      "--preflight", "--quiet"], 1)
         expect_exit("host_confirmation: true is not a confirmation",
-                    [VALIDATE, cache_plan("godaddy", "wp-rocket", host_confirmation=True),
+                    [VALIDATE, cache_plan("rocket-net", "wp-rocket", host_confirmation=True),
                      "--preflight", "--quiet"], 1)
 
+        print("\n=== validate_plan.py — page-cache policy governs adding, never removal ===")
+        # WP Engine and GoDaddy are published prohibitions; rocket-net is unconfirmable. Removal
+        # must stay open in both lanes, while the paired add/enable operation stays closed.
+        for host in ("wpengine", "godaddy", "rocket-net"):
+            for removal, addition in zip(
+                    PAGE_CACHE_REMOVAL_OPERATIONS, PAGE_CACHE_ADDITION_OPERATIONS):
+                expect_exit(
+                    f"{removal} of WP Rocket is accepted on {host}",
+                    [VALIDATE, cache_plan(host, "wp-rocket/wp-rocket.php", removal),
+                     "--preflight", "--quiet"], 0)
+                expect_exit(
+                    f"CONTROL: {addition} of WP Rocket is refused on {host}",
+                    [VALIDATE, cache_plan(host, "wp-rocket/wp-rocket.php", addition),
+                     "--preflight", "--quiet"], 1)
+
+        print("\n=== validate_plan.py — target.kind cannot rename a cache activation ===")
+        page_cache_targets = (
+            ("plugin-setting", "wp-rocket"),
+            ("plugin-file", "wp-rocket/wp-rocket.php"),
+            ("wp-option", "active_plugins"),
+        )
+        for kind, identifier in page_cache_targets:
+            expect_exit(
+                f"WP Rocket activation as {kind} is refused on wpengine",
+                [VALIDATE, cache_plan(
+                    "wpengine", identifier, "activate", kind=kind,
+                    summary="Activate the WP Rocket page-cache plugin"),
+                 "--preflight", "--quiet"], 1)
+        expect_exit(
+            "CONTROL: an activation target with no page-cache plugin is unaffected",
+            [VALIDATE, cache_plan(
+                "wpengine", "contact-form-7/wp-contact-form-7.php", "activate",
+                summary="Activate the unrelated contact-form plugin"),
+             "--preflight", "--quiet"], 0)
+        # THE BOUNDARY OF THIS GATE, asserted so it stays visible rather than being rediscovered.
+        # `active_plugins` names no plugin, so the gate reads the summary. When the summary names
+        # no page cache either, the change is PERMITTED — this case documents that, and it is a
+        # limit, not a guarantee. Failing closed here was tried and reverted: it cannot tell "the
+        # summary names nothing" from "the summary names a plugin that is not a page cache", so it
+        # refused unrelated activations too, which is a blanket refusal of an ordinary case.
+        # Closing it properly needs a structured field naming the plugin. Recorded in
+        # host-policy.json's limits. What stands behind it meanwhile is the approval gate: an
+        # `activate` is high-consequence, so a human must approve that operation by name.
+        expect_exit(
+            "KNOWN LIMIT: a container activation naming no page cache is permitted",
+            [VALIDATE, cache_plan(
+                "wpengine", "active_plugins", "activate", kind="wp-option",
+                summary="Update the active plugin list"),
+             "--preflight", "--quiet"], 0)
+        expect_exit(
+            "…but naming the cache anywhere the gate can read it is still refused",
+            [VALIDATE, cache_plan(
+                "wpengine", "active_plugins", "activate", kind="wp-option",
+                summary="Add wp-rocket to the active plugin list"),
+             "--preflight", "--quiet"], 1)
+        expect_exit(
+            "CONTROL: that same named-cache container change is accepted as a removal",
+            [VALIDATE, cache_plan(
+                "wpengine", "active_plugins", "deactivate", kind="wp-option",
+                summary="Remove wp-rocket from the active plugin list"),
+             "--preflight", "--quiet"], 0)
+
+        print("\n=== validate_plan.py — approval is a recorded attestation ===")
+        expect_exit(
+            "approval.granted=true without evidence is refused at execution readiness",
+            [VALIDATE, write_plan(tmp, change={
+                "approval": {"required": True, "granted": True}}), "--quiet"], 1)
+        expect_exit(
+            "approval evidence with an empty source is refused",
+            [VALIDATE, write_plan(tmp, change={"approval": {
+                "required": True,
+                "granted": True,
+                "evidence": {"source": "", "scope": "Configure the font preload"},
+            }}), "--quiet"], 1)
+        expect_exit(
+            "approval evidence with an empty scope is refused",
+            [VALIDATE, write_plan(tmp, change={"approval": {
+                "required": True,
+                "granted": True,
+                "evidence": {"source": "Operator message in this session", "scope": ""},
+            }}), "--quiet"], 1)
+        expect_exit(
+            "CONTROL: well-formed approval evidence is accepted at execution readiness",
+            [VALIDATE, write_plan(tmp), "--quiet"], 0)
+        expect_exit(
+            "CONTROL: preflight accepts granted=false with no approval evidence",
+            [VALIDATE, write_plan(tmp, change={
+                "approval": {"required": True, "granted": False}}),
+             "--preflight", "--quiet"], 0)
+
+        print("\n=== validate_plan.py — consequential approval names the operation ===")
+
+        def consequential_plan(operation: str, scope: str) -> pathlib.Path:
+            return write_plan(tmp, change={
+                "summary": f"{operation.capitalize()} the performance helper plugin",
+                "target": {
+                    "kind": "plugin-file",
+                    "identifier": "performance-helper/performance-helper.php",
+                    "operation": operation,
+                },
+                "approval": {
+                    "required": True,
+                    "granted": True,
+                    "evidence": {
+                        "source": "Operator message recorded in this session",
+                        "scope": scope,
+                    },
+                },
+            })
+
+        general_scope = "Proceed with the approved performance helper maintenance."
+        for operation in HIGH_CONSEQUENCE_OPERATIONS:
+            expect_exit(
+                f"{operation} is refused when approval scope does not name the operation",
+                [VALIDATE, consequential_plan(operation, general_scope), "--quiet"], 1)
+            expect_exit(
+                f"CONTROL: {operation} is accepted when approval scope names the operation",
+                [VALIDATE, consequential_plan(
+                    operation,
+                    f"{operation.capitalize()} the performance helper plugin on production."),
+                 "--quiet"], 0)
+        expect_exit(
+            "CONTROL: configure does not require its operation named in approval scope",
+            [VALIDATE, write_plan(tmp, tier=2, change={
+                "summary": "Adjust a performance helper setting",
+                "risk_lane": "direct",
+                "target": {
+                    "kind": "plugin-setting",
+                    "identifier": "performance-helper[font_preload]",
+                    "operation": "configure",
+                },
+                "approval": {
+                    "required": True,
+                    "granted": True,
+                    "evidence": {
+                        "source": "Operator message recorded in this session",
+                        "scope": "Adjust the performance helper's font preload setting.",
+                    },
+                },
+            }), "--quiet"], 0)
+
         print("\n=== validate_plan.py — a fingerprint must belong to the plan's installation ===")
+        expect_exit("CONTROL: identical plan and stack URLs are accepted",
+                    [VALIDATE, write_plan(tmp), "--stack",
+                     write_stack(tmp, "https://example.com"), "--quiet"], 0)
         expect_exit("CONTROL: matching stack profile is accepted",
                     [VALIDATE, write_plan(tmp), "--stack", write_stack(tmp, "https://example.com/"), "--quiet"], 0)
+        expect_exit("CONTROL: a subdirectory installation matches itself",
+                    [VALIDATE, write_plan(tmp, site="https://example.com/blog"), "--stack",
+                     write_stack(tmp, "https://example.com/blog/"), "--quiet"], 0)
         # A fingerprint of a SUBPAGE is refused, by design. Containment was abandoned because a
         # parent installation at `/` appears to contain a separate one at `/shop/`; the accepted
         # cost is that a fingerprint must be taken against the site root the plan names.
@@ -420,6 +636,16 @@ def main() -> int:
         expect_exit("stack profile from a SIBLING install on the same origin",
                     [VALIDATE, write_plan(tmp, site="https://example.com/site-a"),
                      "--stack", write_stack(tmp, "https://example.com/site-b/"), "--quiet"], 1)
+        expect_exit("stack profile from a NESTED install on the same origin",
+                    [VALIDATE, write_plan(tmp), "--stack",
+                     write_stack(tmp, "https://example.com/shop/"), "--quiet"], 1)
+        expect_exit("a dot-segment stack URL is refused rather than normalized",
+                    [VALIDATE, write_plan(tmp, site="https://example.com/site-a"), "--stack",
+                     write_stack(tmp, "https://example.com/site-a/../site-b/"), "--quiet"], 1)
+        expect_exit("an encoded-separator stack URL is refused",
+                    [VALIDATE, write_plan(tmp, site="https://example.com/site-a"), "--stack",
+                     write_stack(tmp, "https://example.com/site-a%2f..%2fsite-b/"),
+                     "--quiet"], 1)
 
         # The plan's host_class is the operator's declaration; the fingerprint is a
         # contradiction check. Gating on the fingerprint's CONFIDENCE instead deadlocked real
@@ -443,66 +669,118 @@ def main() -> int:
                      write_stack(tmp, "https://example.com/", host="unknown",
                                  host_confidence="none"), "--quiet"], 0)
 
+        print("\n=== validate_plan.py — higher-tier cache evidence fills public unknowns ===")
+        server_confirmation = {
+            "value": "other",
+            "tier": 2,
+            "evidence": ["wp-cli: cache gateway reports enabled"],
+            "confirmed_by": "WP-CLI over SSH in the operator session",
+        }
+        expect_exit(
+            "operator-confirmed server cache may be declared present",
+            [VALIDATE, write_plan(
+                tmp,
+                cache_layers_present=["page-plugin", "server"],
+                change={"purge_layers": ["page-plugin"]}),
+             "--stack", write_stack(
+                 tmp, "https://example.com/", cache_values={"server": "unknown"},
+                 operator_confirmed={"server": server_confirmation}),
+             "--quiet"], 0)
+        expect_exit(
+            "operator-confirmed server cache may be purged",
+            [VALIDATE, write_plan(
+                tmp,
+                cache_layers_present=["page-plugin", "server"],
+                change={"purge_layers": ["server"]}),
+             "--stack", write_stack(
+                 tmp, "https://example.com/", cache_values={"server": "unknown"},
+                 operator_confirmed={"server": server_confirmation}),
+             "--quiet"], 0)
+        expect_exit(
+            "an unknown public cache layer without operator evidence cannot be asserted",
+            [VALIDATE, write_plan(
+                tmp,
+                cache_layers_present=["page-plugin", "server"],
+                change={"purge_layers": ["server"]}),
+             "--stack", write_stack(
+                 tmp, "https://example.com/", cache_values={"server": "unknown"}),
+             "--quiet"], 1)
+        expect_exit(
+            "CONTROL: a plan cannot declare a layer whose public finding is none",
+            [VALIDATE, write_plan(
+                tmp,
+                cache_layers_present=["page-plugin", "server"],
+                change={"purge_layers": ["server"]}),
+             "--stack", write_stack(
+                 tmp, "https://example.com/", cache_values={"server": "none"}),
+             "--quiet"], 1)
+        expect_exit(
+            "CONTROL: a plan cannot omit a positively found public cache layer",
+            [VALIDATE, write_plan(tmp),
+             "--stack", write_stack(
+                 tmp, "https://example.com/", cache_values={"server": "varnish"}),
+             "--quiet"], 1)
+
     print("\n=== capabilities.py — local evidence must belong to the audited installation ===")
     # The loopback fixture answers 200 on every path, so /site-a/ and /site-b/ are both reachable
     # and the only thing distinguishing them is the binding under test.
-    base, server = start_fixture()
     try:
-        with tempfile.TemporaryDirectory() as d:
-            tmp = pathlib.Path(d)
-            # Binding is now an explicit operator declaration rather than a URL inference, so
-            # these cases no longer depend on WP-CLI being installed and cannot go vacuous.
-            checkout = make_wordpress_checkout(tmp / "checkout", base)
+        base, server = start_fixture()
+    except OSError as exc:
+        why = f"loopback socket unavailable: {type(exc).__name__}: {exc}"
+        skip("CONTROL: a checkout declared with --local-root DOES bind", why)
+        skip("CONTROL: --local-root works from a DIFFERENT working directory", why)
+        skip("the same checkout WITHOUT --local-root does not bind", why)
+        skip("--local-root naming a non-WordPress directory binds nothing", why)
+    else:
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                tmp = pathlib.Path(d)
+                # Binding is now an explicit operator declaration rather than a URL inference, so
+                # these cases no longer depend on WP-CLI being installed and cannot go vacuous.
+                checkout = make_wordpress_checkout(tmp / "checkout", base)
 
-            doc = capabilities_for(checkout, base + "/", local_root=checkout)
-            bound = doc["access"].get("deploy_path") or doc["access"].get("wp_cli")
-            record(bool(bound), "CONTROL: a checkout declared with --local-root DOES bind",
-                   f"tier={doc['tier']['value']} deploy_path={doc['access'].get('deploy_path')}")
+                doc = capabilities_for(checkout, base + "/", local_root=checkout)
+                bound = doc["access"].get("deploy_path") or doc["access"].get("wp_cli")
+                record(bool(bound), "CONTROL: a checkout declared with --local-root DOES bind",
+                       f"tier={doc['tier']['value']} "
+                       f"deploy_path={doc['access'].get('deploy_path')}")
 
-            # The flag's main case: running from somewhere else entirely. An earlier version
-            # discovered the checkout only from the working directory, so --local-root silently
-            # did nothing unless you were already standing inside the checkout.
-            outside = tmp / "unrelated-working-dir"
-            outside.mkdir()
-            doc = capabilities_for(outside, base + "/", local_root=checkout)
-            bound = doc["access"].get("deploy_path") or doc["access"].get("wp_cli")
-            record(bool(bound), "CONTROL: --local-root works from a DIFFERENT working directory",
-                   f"tier={doc['tier']['value']} deploy_path={doc['access'].get('deploy_path')}")
+                # The flag's main case: running from somewhere else entirely. An earlier version
+                # discovered the checkout only from the working directory, so --local-root
+                # silently did nothing unless you were already standing inside the checkout.
+                outside = tmp / "unrelated-working-dir"
+                outside.mkdir()
+                doc = capabilities_for(outside, base + "/", local_root=checkout)
+                bound = doc["access"].get("deploy_path") or doc["access"].get("wp_cli")
+                record(
+                    bool(bound),
+                    "CONTROL: --local-root works from a DIFFERENT working directory",
+                    f"tier={doc['tier']['value']} "
+                    f"deploy_path={doc['access'].get('deploy_path')}",
+                )
 
-            doc = capabilities_for(checkout, base + "/")
-            unbound = not doc["access"].get("deploy_path") and not doc["access"].get("wp_cli")
-            record(unbound, "the same checkout WITHOUT --local-root does not bind",
-                   f"tier={doc['tier']['value']} deploy_path={doc['access'].get('deploy_path')}")
+                doc = capabilities_for(checkout, base + "/")
+                unbound = (not doc["access"].get("deploy_path")
+                           and not doc["access"].get("wp_cli"))
+                record(unbound, "the same checkout WITHOUT --local-root does not bind",
+                       f"tier={doc['tier']['value']} "
+                       f"deploy_path={doc['access'].get('deploy_path')}")
 
-            # Under explicit declaration, whatever the operator names IS the binding — so
-            # "--local-root points somewhere else" is no longer a meaningful negative; it is the
-            # operator changing their mind. The guard that still matters is that a declared path
-            # which is not a WordPress checkout binds nothing.
-            not_wordpress = tmp / "just-a-folder"
-            not_wordpress.mkdir()
-            doc = capabilities_for(checkout, base + "/", local_root=not_wordpress)
-            unbound = not doc["access"].get("deploy_path") and not doc["access"].get("wp_cli")
-            record(unbound, "--local-root naming a non-WordPress directory binds nothing",
-                   f"tier={doc['tier']['value']} deploy_path={doc['access'].get('deploy_path')}")
-    finally:
-        server.shutdown()
-
-    print("\n=== installation identity is exact, and ambiguity is refused ===")
-    validate = load_module("validate_plan", VALIDATE)
-    for label, site, probed, want in [
-        ("identical URLs are the same install", "https://example.com", "https://example.com", True),
-        ("trailing slash is not a difference", "https://example.com", "https://example.com/", True),
-        ("subdirectory install matches itself", "https://example.com/blog", "https://example.com/blog/", True),
-        ("SIBLING install is refused", "https://example.com/site-a", "https://example.com/site-b/", False),
-        ("NESTED install is refused", "https://example.com", "https://example.com/shop/", False),
-        ("a subpage is not the site root", "https://example.com", "https://example.com/a-page/", False),
-        ("dot-segment traversal is refused, not normalized",
-         "https://example.com/site-a", "https://example.com/site-a/../site-b/", None),
-        ("encoded separator is refused",
-         "https://example.com/site-a", "https://example.com/site-a%2f..%2fsite-b/", None),
-    ]:
-        got = validate.identifies_same_installation(site, probed)
-        record(got is want, f"identity: {label}", f"got {got}, want {want}")
+                # Under explicit declaration, whatever the operator names IS the binding — so
+                # "--local-root points somewhere else" is no longer a meaningful negative; it is
+                # the operator changing their mind. The guard that still matters is that a
+                # declared path which is not a WordPress checkout binds nothing.
+                not_wordpress = tmp / "just-a-folder"
+                not_wordpress.mkdir()
+                doc = capabilities_for(checkout, base + "/", local_root=not_wordpress)
+                unbound = (not doc["access"].get("deploy_path")
+                           and not doc["access"].get("wp_cli"))
+                record(unbound, "--local-root naming a non-WordPress directory binds nothing",
+                       f"tier={doc['tier']['value']} "
+                       f"deploy_path={doc['access'].get('deploy_path')}")
+        finally:
+            server.shutdown()
 
     print("\n=== perf-probe.py — quick mode must not call an unusable response usable ===")
     # perf-probe deliberately requires an absolute HTTPS --site, so a plain-HTTP loopback fixture

@@ -69,7 +69,7 @@ the plugin category. Every unnamed product remains `UNCONFIRMABLE` and therefore
 | `wpengine` | **PROHIBITED** unless the exact plugin and caching feature are approved by WP Engine; listed page caches are disallowed. | **Yes:** first-party disallowed-plugin list. | Dashboard environment copy, SFTP, SSH, or GitPush may be in use. A later GitPush overwrites tracked direct edits. Confirm the site's authoritative path. |
 | `kinsta` | **PROHIBITED** unless Kinsta explicitly supports the exact integration; supported optimization plugins may have their page cache disabled. | **Yes:** first-party banned/incompatible list. | MyKinsta can push selected files or database content between environments. A push can overwrite production scope; confirm the selected scope. |
 | `siteground` | **PERMITTED ONLY:** `sg-optimizer` is the documented SiteGround path. Every other page-cache plugin is **UNCONFIRMABLE → PROHIBITED** until SiteGround confirms it. | **Unconfirmed:** confirm whether a list applies to the exact product. | Staging, Git, SSH, SFTP, and WP-CLI availability is product-dependent. Confirm the production deploy owner before editing files. |
-| `godaddy` | **UNCONFIRMABLE → PROHIBITED.** Confirm with GoDaddy for the exact Managed Hosting for WordPress, Web Hosting, WooCommerce, VPS, or reseller product. | **Unconfirmed:** confirm with GoDaddy. | Managed-product staging can push files and optionally database content; SFTP and SSH/WP-CLI are plan-dependent. A staging sync can overwrite live data. |
+| `godaddy` | **PROHIBITED** on Managed Hosting for WordPress, which publishes a blocklist naming page-cache plugins, removes them on detection, and states the list is not exhaustive. For every other GoDaddy product, **UNCONFIRMABLE → PROHIBITED**. | **Yes:** first-party blocklist for Managed Hosting for WordPress; unconfirmed for the other products. | Managed-product staging can push files and optionally database content; SFTP and SSH/WP-CLI are plan-dependent. A staging sync can overwrite live data. |
 | `cloudways` | **PERMITTED ONLY:** `breeze` and the specifically documented WP Rocket integration. Every other page-cache plugin is **UNCONFIRMABLE → PROHIBITED**. | **Unconfirmed:** confirm whether a list applies to the application. | Confirm staging and the authoritative Git/SFTP/SSH workflow for the application. Do not assume a direct file edit survives the next deployment. |
 | `flywheel` | **PROHIBITED** for full-page caching. Flywheel documents server caching and lists caching plugins as unsupported/not recommended; optimization-only features require their cache feature to be off. | **Yes, but not a blanket ban:** first-party “not recommended plugins” list. | Dashboard staging/push and SSH/GitHub Actions may deploy code. Confirm which path owns production before editing. |
 | `pressable` | **PROHIBITED** for third-party full-page caching. Pressable owns read-only `advanced-cache.php` and `object-cache.php`; use its platform cache controls. | **Unconfirmed:** no blanket disallowed list is established here. | Staging, SFTP, and SSH are documented. Managed drop-ins are read-only; other PHP file-write permissions can be controlled by the platform. |
@@ -177,13 +177,36 @@ the plugin category. Every unnamed product remains `UNCONFIRMABLE` and therefore
 
 ### `godaddy`
 
-- **Identify:** `fingerprint.py` uses `x-gd-*` for a high-confidence `godaddy` result. The class
-  does not distinguish Managed Hosting for WordPress, Web Hosting, WooCommerce, VPS, dedicated, or
-  reseller products. Confirm the exact product before using any policy below.
-- **Page cache and policy list:** **UNCONFIRMABLE → PROHIBITED.** A blanket first-party page-cache
-  allowance or disallowed-plugin list was not confirmed for every product represented by this
-  class. Ask GoDaddy about the exact product and plugin before installation, activation,
-  configuration, deactivation, or removal.
+- **Identify:** `fingerprint.py` uses `x-gd-*` for a high-confidence `godaddy` result, and
+  `x-gateway-*` for a **medium**-confidence one — the gateway prefix is not vendor-namespaced, so
+  something else could plausibly emit it. A real audit matched on `x-gateway-*` alone and was
+  correct, so do not treat medium here as a reason to stop. The class does not distinguish Managed
+  Hosting for WordPress, Web Hosting, WooCommerce, VPS, dedicated, or reseller products. Confirm the
+  exact product before using any policy below.
+- **Page cache and policy list:** **PROHIBITED** on Managed Hosting for WordPress. GoDaddy publishes
+  a blocklist for that product and states that *"if we detect them installed on your account, they
+  will be removed."* Three of the page caches this project recognizes are named on it —
+  `w3-total-cache`, `wp-super-cache` and `wp-fastest-cache` — along with `hyper-cache`, `wp-cache`
+  and `wp-fast-cache`.
+
+  **A page cache absent from that list is not thereby permitted.** GoDaddy says plainly that
+  *"this is not an exhaustive list"* and that a plugin *"may be added to the list or disabled at any
+  time"*, and one of its stated blocklist categories is plugins duplicating functionality already in
+  GoDaddy's system — which is what a page cache does on a product that ships its own gateway cache.
+  There is therefore no first-party allowance for **any** page-cache plugin here, which is why the
+  verdict is `prohibited` rather than `permitted-only` on the six that happen not to be named.
+  [blocklisted plugins](https://www.godaddy.com/help/blocklisted-plugins-8964)
+
+  **Scope, stated honestly:** that page covers Managed Hosting for WordPress. A separate blocklist
+  exists for Managed Hosting for WooCommerce, but it could not be retrieved while writing this entry
+  (404, then 403 from an alternate locale), so nothing here is cited to it. For Web Hosting,
+  WooCommerce, VPS, dedicated and reseller products the position is unchanged and unconfirmed:
+  **UNCONFIRMABLE → PROHIBITED**, ask GoDaddy about the exact product and plugin.
+
+  As everywhere in this file, the verdict governs **adding** a page cache. Disabling, deactivating
+  or removing one is exempt from this gate — a disallowed-plugin list cannot be violated by taking
+  the plugin away, and the observed evidence here is a site where GoDaddy had already left three
+  blocklisted plugins installed-but-inactive.
 - **Staging and deploy:** Managed-product staging is plan-dependent and uses dashboard sync. The
   documented push moves `wp-content` files and can optionally overwrite the production database;
   production-only orders, users, or content can be lost. SFTP is also documented. Record exactly

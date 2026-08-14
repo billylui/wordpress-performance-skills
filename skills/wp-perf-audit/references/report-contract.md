@@ -115,6 +115,30 @@ Note the page-weight row. `asset_cap_applied` or a walk that could not finish ma
 **floor over a sample**, not a page weight, and the `Source` cell says so. Reporting it as a plain
 number would be the same class of error as inventing one.
 
+## A confidence in the Stack section needs a source
+
+The Stack section is free-form — a table, a list, prose, whatever fits the site. One rule binds it,
+and it exists because a real report broke it: **if a Stack table carries a `Confidence` column, it
+must carry a `Source` column too, and every row's `Source` must be non-empty.** The checker enforces
+exactly that and nothing else about the section's shape.
+
+The report in question was headed *"From `fingerprint.py`, cross-checked against the client's own
+notes. Every cell agreed."* and rated the server and object cache layers `high`. `fingerprint.py`
+had rated both `unknown` — it reads public HTTP responses, and neither layer announces itself in
+one. The values were true; the operator had proved them over WP-CLI. What was wrong was the
+attribution and the confidence word: a WP-CLI fact was presented as a fingerprint fact, and a
+confidence the script never assigned was printed next to it.
+
+That is the scorecard's `lab` / `field` problem in a different section. There the fix was to make the
+`Source` cell say which kind of measurement stands behind the number, because the reader cannot
+otherwise tell. Here it is the same: `high` means one thing when a script watched the site answer and
+another when a person ran a command, and a reader deciding whether to act on a cell needs to know
+which. Name the tool or the access tier — `fingerprint.py`, `WP-CLI tier 2`, `host control panel` —
+not merely "confirmed".
+
+**A confidence with no source is the shape to watch for.** A value with no source is visibly
+incomplete and gets questioned; a value wearing a confidence word reads as measured and does not.
+
 ## Rating a metric
 
 Ratings come from a published table, never from per-run judgement. Two models looking at the same

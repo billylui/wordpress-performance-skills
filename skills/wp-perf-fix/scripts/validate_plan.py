@@ -13,6 +13,7 @@ The validator performs no network access and never changes a target site.  Exit
 import argparse
 import copy
 import json
+import re
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -22,7 +23,9 @@ from urllib.parse import urlsplit
 
 
 # This is the only change-plan schema this validator knows how to prove safe.
-SCHEMA_VERSION = "1.0"
+PLAN_SCHEMA_VERSION = "1.1"
+# Stack profiles are produced independently, so their schema must never share the plan constant.
+STACK_SCHEMA_VERSION = "1.1"
 # The tool version identifies this implementation without changing the plan schema.
 TOOL_VERSION = "0.1.0"
 
@@ -59,6 +62,40 @@ REQUIRED_CHANGE_KEYS = (
 )
 
 RISK_LANES = ("direct", "prohibited", "staging-first")
+# Operations are a closed contract vocabulary because host policy and approval gates depend on
+# what a change does, independently of the kind of target it names.
+TARGET_OPERATIONS = (
+    "configure",
+    "enable",
+    "disable",
+    "install",
+    "activate",
+    "deactivate",
+    "remove",
+    "update",
+    "replace",
+)
+# Removing or turning off a page cache cannot violate a host policy against adding one.
+HOST_POLICY_EXEMPT_OPERATIONS = ("disable", "deactivate", "remove")
+# These operations reach beyond performance configuration, so approval must name the operation.
+HIGH_CONSEQUENCE_OPERATIONS = (
+    "install",
+    "activate",
+    "deactivate",
+    "remove",
+    "update",
+    "replace",
+)
+# Exact alphabetic words prevent approval for "deactivate" from being mistaken for "activate".
+APPROVAL_SCOPE_WORD_PATTERN = re.compile(r"[a-z]+")
+# Identifier tokens expose plugin basenames embedded in option-shaped targets such as
+# active_plugins entries while preserving the gate's deliberate prefix-biased refusal.
+PAGE_CACHE_IDENTIFIER_TOKEN_PATTERN = re.compile(r"[a-z0-9][a-z0-9.-]*")
+# Word and path separators are equivalent when a required summary names a plugin in prose.
+PAGE_CACHE_IDENTIFIER_SEPARATOR_PATTERN = re.compile(r"[^a-z0-9]+")
+# This option is a container for plugin basenames, so its required summary supplies the product
+# name when the identifier itself names only the WordPress option.
+PAGE_CACHE_CONTAINER_IDENTIFIERS = ("active-plugins",)
 # Approval is a contract-derived requirement for every executable change; a
 # plan under inspection cannot weaken the gate by declaring approval optional.
 EXECUTABLE_CHANGE_REQUIRES_APPROVAL = True
@@ -88,6 +125,7 @@ CACHE_VALUES_BY_LAYER: Mapping[str, Tuple[str, ...]] = {
         "litespeed",
         "nginx-fastcgi",
         "none",
+        "other",
         "unknown",
         "varnish",
     ),
@@ -177,9 +215,6 @@ COMPENSATING_CONTROL_KEYS = ("mechanism", "verification", "rollback_trigger")
 # The machine-readable half of host-constraints.md, loaded from the skill's own references/ so an
 # installed copy carries it. tools/check_host_policy.py fails the build if the two ever disagree.
 HOST_POLICY_FILENAME = "host-policy.json"
-# A page-cache verdict only applies to a change that targets a plugin. Other kinds are not yet
-# encoded, and silently gating them on a page-cache table would refuse unrelated work.
-PAGE_CACHE_TARGET_KINDS = ("plugin-setting", "plugin-file")
 
 # Numeric ranks make minimum-lane comparisons explicit; prohibited is handled
 # as an unconditional refusal and therefore intentionally has no rank.
@@ -198,6 +233,8 @@ STACK_CACHE_LAYER_ORDER = CACHE_LAYERS
 # check, so gating on the fingerprint's confidence blocked correct plans while
 # leaving genuine contradictions unexamined. See cross_check_stack.
 CACHE_CROSSCHECK_CONFIDENCES = ("high", "medium")
+# Operator confirmation must come from an authenticated access tier, never the public probe.
+OPERATOR_CONFIRMATION_TIERS = (1, 2, 3)
 # WordPress site origins must be HTTP(S); other URI schemes cannot bind a live
 # fingerprint to a production change plan.
 ORIGIN_SCHEMES = ("http", "https")
@@ -484,6 +521,46 @@ def validate_approval(
             "execution readiness requires approval.granted to be exactly boolean true",
         )
 
+    if not execution_readiness:
+        return
+
+    evidence = approval.get("evidence")
+    if not is_valid_approval_evidence(evidence):
+        add_problem(
+            problems,
+            change_id,
+            "approval",
+            "execution readiness requires approval.evidence with non-empty string fields "
+            "'source' and 'scope'",
+        )
+        return
+
+    target = change.get("target")
+    operation = target.get("operation") if isinstance(target, dict) else None
+    assert isinstance(evidence, dict)
+    scope = evidence.get("scope")
+    if (
+        operation in HIGH_CONSEQUENCE_OPERATIONS
+        and isinstance(scope, str)
+        and operation not in APPROVAL_SCOPE_WORD_PATTERN.findall(scope.casefold())
+    ):
+        add_problem(
+            problems,
+            change_id,
+            "approval",
+            "approval.evidence.scope must name high-consequence operation {!r}".format(
+                operation
+            ),
+        )
+
+
+def is_valid_approval_evidence(value: Any) -> bool:
+    """Accept only approval evidence a human could go and read back."""
+
+    if not isinstance(value, dict):
+        return False
+    return all(is_non_empty_string(value.get(key)) for key in ("source", "scope"))
+
 
 def validate_purge_layers(
     change: Mapping[str, Any],
@@ -622,7 +699,15 @@ def validate_target_and_tier(
             problems,
             change_id,
             "target.kind",
-            "target must be an object with kind and identifier",
+            "target must be an object with kind, identifier, and operation",
+        )
+        add_problem(
+            problems,
+            change_id,
+            "target.operation",
+            "target.operation must be one of {}".format(
+                " | ".join(TARGET_OPERATIONS)
+            ),
         )
         return
 
@@ -673,6 +758,17 @@ def validate_target_and_tier(
         "target.kind",
         problems,
     )
+
+    operation = target.get("operation")
+    if not isinstance(operation, str) or operation not in TARGET_OPERATIONS:
+        add_problem(
+            problems,
+            change_id,
+            "target.operation",
+            "target.operation must be one of {}".format(
+                " | ".join(TARGET_OPERATIONS)
+            ),
+        )
 
 
 def validate_risk_lane(
@@ -872,8 +968,10 @@ def validate_host_policy(
     The verdict is computed from the policy table and the change's own target. Nothing in the plan
     can assert it, for the same reason `approval.required: false` is refused rather than obeyed.
 
-    Scope: this covers a target whose identifier is a recognized page-cache plugin. A cache shipped
-    under an unrecognized slug is not gated here, which the policy file records as a known limit.
+    Scope: this covers every target kind whose identifier names a recognized page-cache plugin. A
+    cache shipped under an unrecognized slug is not gated here, which the policy file records as a
+    known limit. Disabling, deactivating, or removing one is exempt because those operations cannot
+    add a cache that the host policy forbids.
     """
 
     if policy is None:
@@ -881,14 +979,37 @@ def validate_host_policy(
     target = change.get("target")
     if not isinstance(target, dict):
         return
-    kind = target.get("kind")
     identifier = target.get("identifier")
-    if kind not in PAGE_CACHE_TARGET_KINDS or not isinstance(identifier, str):
+    operation = target.get("operation")
+    if not isinstance(identifier, str):
+        return
+    if operation in HOST_POLICY_EXEMPT_OPERATIONS:
         return
     known = {str(name).lower() for name in policy.get("page_cache_plugins", [])}
-    if not page_cache_slug(identifier, known):
-        return
     slug = page_cache_slug(identifier, known)
+    normalized_identifier = PAGE_CACHE_IDENTIFIER_SEPARATOR_PATTERN.sub(
+        "-", identifier.strip().casefold()
+    ).strip("-")
+    if slug is None and normalized_identifier in PAGE_CACHE_CONTAINER_IDENTIFIERS:
+        summary = change.get("summary")
+        if isinstance(summary, str):
+            slug = page_cache_slug(summary, known)
+    if slug is None:
+        # A container identifier like `active_plugins` names no plugin, so when its summary names
+        # no page cache either, this gate cannot tell an activation of a banned cache from any
+        # other plugin activation, and it permits the change.
+        #
+        # Failing closed here was tried and reverted. It cannot distinguish "the summary names
+        # nothing" from "the summary names a plugin that is not a page cache", so it refused every
+        # activation routed through `active_plugins` — including unrelated ones. That is the
+        # blanket refusal of an ordinary case this project has already learned gets argued around
+        # rather than obeyed, and the cure would be a structured field naming the plugin, not a
+        # broader guess from free text. Recorded as a known limit in `host-policy.json`.
+        #
+        # What stands behind it meanwhile: `activate` is a high-consequence operation, so
+        # `approval.evidence.scope` must name it, and no such change reaches production without a
+        # human being asked for that operation by name.
+        return
 
     hosts = policy.get("hosts", {})
     entry = hosts.get(plan_host_class) if isinstance(plan_host_class, str) else None
@@ -969,10 +1090,16 @@ def page_cache_slug(identifier: str, known: Set[str]) -> Optional[str]:
         return None
     # `slug/file.php` — the canonical plugin basename — identifies the plugin by its directory.
     candidates = {text, text.split("/", 1)[0]}
+    candidates.update(PAGE_CACHE_IDENTIFIER_TOKEN_PATTERN.findall(text))
     for candidate in sorted(candidates):
         for slug in sorted(known):
             if candidate == slug or candidate.startswith(slug + "-"):
                 return slug
+    normalized_sequence = PAGE_CACHE_IDENTIFIER_SEPARATOR_PATTERN.sub("-", text).strip("-")
+    padded_sequence = "-{}-".format(normalized_sequence)
+    for slug in sorted(known):
+        if "-{}-".format(slug) in padded_sequence:
+            return slug
     return None
 
 
@@ -1120,7 +1247,96 @@ def validate_plan_cache_layers(
     return present_layers, bool(value)
 
 
-def stack_cache_layers(stack: Mapping[str, Any], problems: List[Problem]) -> Optional[Set[str]]:
+def validate_operator_confirmation(
+    entry: Mapping[str, Any],
+    layer: str,
+    public_value: Any,
+    problems: List[Problem],
+) -> Tuple[Optional[str], bool]:
+    """Validate optional higher-tier evidence without overwriting the public signal."""
+
+    if "operator_confirmed" not in entry:
+        return None, True
+    confirmation = entry.get("operator_confirmed")
+    if not isinstance(confirmation, dict):
+        add_problem(
+            problems,
+            "plan",
+            "stack_cache_layers",
+            "stack cache layer {!r} operator_confirmed must be an object".format(
+                layer
+            ),
+        )
+        return None, False
+
+    valid = True
+    if public_value != "unknown":
+        add_problem(
+            problems,
+            "plan",
+            "stack_cache_layers",
+            "stack cache layer {!r} operator_confirmed may only fill in a public value of "
+            "'unknown', found {!r}".format(layer, public_value),
+        )
+        valid = False
+
+    value = confirmation.get("value")
+    if value not in CACHE_VALUES_BY_LAYER[layer]:
+        add_problem(
+            problems,
+            "plan",
+            "stack_cache_layers",
+            "stack cache layer {!r} operator_confirmed.value must be one of {}".format(
+                layer, " | ".join(CACHE_VALUES_BY_LAYER[layer])
+            ),
+        )
+        valid = False
+
+    tier = confirmation.get("tier")
+    if type(tier) is not int or tier not in OPERATOR_CONFIRMATION_TIERS:
+        add_problem(
+            problems,
+            "plan",
+            "stack_cache_layers",
+            "stack cache layer {!r} operator_confirmed.tier must be one of {}".format(
+                layer, " | ".join(str(item) for item in OPERATOR_CONFIRMATION_TIERS)
+            ),
+        )
+        valid = False
+
+    evidence = confirmation.get("evidence")
+    if (
+        not isinstance(evidence, list)
+        or not evidence
+        or not all(is_non_empty_string(item) for item in evidence)
+    ):
+        add_problem(
+            problems,
+            "plan",
+            "stack_cache_layers",
+            "stack cache layer {!r} operator_confirmed.evidence must be a non-empty array of "
+            "non-empty strings".format(layer),
+        )
+        valid = False
+
+    if not is_non_empty_string(confirmation.get("confirmed_by")):
+        add_problem(
+            problems,
+            "plan",
+            "stack_cache_layers",
+            "stack cache layer {!r} operator_confirmed.confirmed_by must be a non-empty "
+            "string".format(layer),
+        )
+        valid = False
+
+    return str(value) if valid else None, valid
+
+
+def stack_cache_layers(
+    stack: Mapping[str, Any], problems: List[Problem]
+) -> Optional[Tuple[Set[str], Set[str], Set[str]]]:
+    """Return public presences, proven absences, and operator-confirmed presences."""
+
     entries = stack.get("cache_layers")
     if not isinstance(entries, list):
         add_problem(
@@ -1140,6 +1356,8 @@ def stack_cache_layers(stack: Mapping[str, Any], problems: List[Problem]) -> Opt
         return None
 
     found: Set[str] = set()
+    absent: Set[str] = set()
+    operator_confirmed: Set[str] = set()
     reliable = True
     for index, expected_layer in enumerate(STACK_CACHE_LAYER_ORDER):
         entry = entries[index]
@@ -1167,6 +1385,11 @@ def stack_cache_layers(stack: Mapping[str, Any], problems: List[Problem]) -> Opt
         value = entry.get("value")
         confidence = entry.get("confidence")
         evidence = entry.get("evidence")
+        confirmed_value, confirmation_valid = validate_operator_confirmation(
+            entry, expected_layer, value, problems
+        )
+        if not confirmation_valid:
+            reliable = False
         if not is_non_empty_string(value):
             add_problem(
                 problems,
@@ -1199,6 +1422,10 @@ def stack_cache_layers(stack: Mapping[str, Any], problems: List[Problem]) -> Opt
                     ),
                 )
                 reliable = False
+            if confirmed_value == "none":
+                absent.add(str(layer))
+            elif confirmed_value not in (None, "unknown"):
+                operator_confirmed.add(str(layer))
             continue
 
         if confidence not in CACHE_CROSSCHECK_CONFIDENCES or not isinstance(evidence, list) or not evidence or not all(
@@ -1214,9 +1441,13 @@ def stack_cache_layers(stack: Mapping[str, Any], problems: List[Problem]) -> Opt
             )
             reliable = False
             continue
-        if value != "none":
+        if value == "none":
+            absent.add(str(layer))
+        else:
             found.add(str(layer))
-    return found if reliable else None
+    if not reliable:
+        return None
+    return found, absent, operator_confirmed
 
 
 def normalized_origin(value: Any) -> Optional[str]:
@@ -1323,13 +1554,13 @@ def cross_check_stack(
             "stack profile top-level JSON value must be an object",
         )
         return
-    if stack.get("schema_version") != SCHEMA_VERSION:
+    if stack.get("schema_version") != STACK_SCHEMA_VERSION:
         add_problem(
             problems,
             "plan",
             "stack_shape",
             "stack schema_version must be {!r}, found {!r}".format(
-                SCHEMA_VERSION, stack.get("schema_version")
+                STACK_SCHEMA_VERSION, stack.get("schema_version")
             ),
         )
     if stack.get("tool") != "fingerprint":
@@ -1422,19 +1653,49 @@ def cross_check_stack(
                 ),
             )
 
-    found_layers = stack_cache_layers(stack, problems)
+    stack_layers = stack_cache_layers(stack, problems)
     plan_layers = document.get("cache_layers_present")
-    if found_layers is not None and isinstance(plan_layers, list):
+    if stack_layers is not None and isinstance(plan_layers, list):
         comparable_plan_layers = {
             layer for layer in plan_layers if isinstance(layer, str) and layer in CACHE_LAYERS
         }
-        if comparable_plan_layers != found_layers or len(comparable_plan_layers) != len(plan_layers):
+        if len(comparable_plan_layers) != len(plan_layers):
+            return
+        found_layers, absent_layers, operator_confirmed_layers = stack_layers
+        missing_layers = found_layers - comparable_plan_layers
+        if missing_layers:
             add_problem(
                 problems,
                 "plan",
                 "stack_cache_layers",
-                "plan cache_layers_present {} does not match stack layers actually found {}".format(
-                    sorted(comparable_plan_layers), sorted(found_layers)
+                "plan cache_layers_present omits layers the public fingerprint found: {}".format(
+                    sorted(missing_layers)
+                ),
+            )
+        contradicted_absences = absent_layers & comparable_plan_layers
+        if contradicted_absences:
+            add_problem(
+                problems,
+                "plan",
+                "stack_cache_layers",
+                "plan cache_layers_present lists layers the stack proved absent: {}".format(
+                    sorted(contradicted_absences)
+                ),
+            )
+        unsupported_layers = (
+            comparable_plan_layers
+            - found_layers
+            - absent_layers
+            - operator_confirmed_layers
+        )
+        if unsupported_layers:
+            add_problem(
+                problems,
+                "plan",
+                "stack_cache_layers",
+                "plan cache_layers_present lists layers the public fingerprint left unknown "
+                "without positive operator_confirmed evidence: {}".format(
+                    sorted(unsupported_layers)
                 ),
             )
 
@@ -1470,13 +1731,13 @@ def validate_plan(
                 "plan is missing required key {!r}".format(key),
             )
 
-    if document.get("schema_version") != SCHEMA_VERSION:
+    if document.get("schema_version") != PLAN_SCHEMA_VERSION:
         add_problem(
             problems,
             "plan",
             "document_shape",
             "schema_version must be {!r}, found {!r}".format(
-                SCHEMA_VERSION, document.get("schema_version")
+                PLAN_SCHEMA_VERSION, document.get("schema_version")
             ),
         )
     if document.get("tool") != "change-plan":
@@ -1582,7 +1843,7 @@ def machine_summary(plan_path: Path, problems: Sequence[Problem]) -> Dict[str, A
             }
             for problem in ordered
         ],
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": PLAN_SCHEMA_VERSION,
         "status": "valid" if not ordered else "invalid",
         "tool": "validate-plan",
         "tool_version": TOOL_VERSION,
@@ -1649,7 +1910,14 @@ def selftest_plan() -> Dict[str, Any]:
         "cache_layers_present": ["server"],
         "changes": [
             {
-                "approval": {"granted": True, "required": True},
+                "approval": {
+                    "evidence": {
+                        "scope": "Configure the self-test cache setting.",
+                        "source": "Operator message recorded by the self-test.",
+                    },
+                    "granted": True,
+                    "required": True,
+                },
                 "catalog_entry": "frontend/selftest.md",
                 "expected_effect": {
                     "direction": "decrease",
@@ -1662,16 +1930,64 @@ def selftest_plan() -> Dict[str, Any]:
                 "rollback": "Restore snapshot.bak and purge server.",
                 "snapshot": {"artifact": "snapshot.bak", "required": True},
                 "summary": "Change one cache setting.",
-                "target": {"identifier": "cache-setting", "kind": "plugin-setting"},
+                "target": {
+                    "identifier": "cache-setting",
+                    "kind": "plugin-setting",
+                    "operation": "configure",
+                },
             }
         ],
         "generated_at": "selftest",
         "host_class": "self-managed",
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": PLAN_SCHEMA_VERSION,
         "site": selftest_origin,
         "tier": 1,
         "tool": "change-plan",
         "tool_version": TOOL_VERSION,
+    }
+
+
+def selftest_stack() -> Dict[str, Any]:
+    """Return a same-site stack with one positively observed server cache."""
+
+    selftest_origin = "{}://{}-{}/".format("https", "selftest", "site")
+    return {
+        "cache_layers": [
+            {
+                "confidence": "none",
+                "evidence": [],
+                "layer": "edge",
+                "value": "unknown",
+            },
+            {
+                "confidence": "high",
+                "evidence": ["probe: self-test server cache detected"],
+                "layer": "server",
+                "value": "nginx-fastcgi",
+            },
+            {
+                "confidence": "none",
+                "evidence": [],
+                "layer": "page-plugin",
+                "value": "unknown",
+            },
+            {
+                "confidence": "none",
+                "evidence": [],
+                "layer": "object",
+                "value": "unknown",
+            },
+        ],
+        "profile": {
+            "host_class": {
+                "confidence": "high",
+                "evidence": ["probe: self-test host confirmed"],
+                "value": "self-managed",
+            }
+        },
+        "schema_version": STACK_SCHEMA_VERSION,
+        "target": selftest_origin,
+        "tool": "fingerprint",
     }
 
 
@@ -1787,6 +2103,7 @@ def run_selftest() -> int:
             direct_theme_file["changes"][0]["target"] = {
                 "identifier": "functions.php",
                 "kind": "theme-file",
+                "operation": "configure",
             }
             cases.append(
                 (
@@ -1797,44 +2114,10 @@ def run_selftest() -> int:
                 )
             )
 
-            mismatched_stack = {
-                "cache_layers": [
-                    {
-                        "confidence": "none",
-                        "evidence": [],
-                        "layer": "edge",
-                        "value": "unknown",
-                    },
-                    {
-                        "confidence": "high",
-                        "evidence": ["probe: self-test server cache detected"],
-                        "layer": "server",
-                        "value": "nginx-fastcgi",
-                    },
-                    {
-                        "confidence": "none",
-                        "evidence": [],
-                        "layer": "page-plugin",
-                        "value": "unknown",
-                    },
-                    {
-                        "confidence": "none",
-                        "evidence": [],
-                        "layer": "object",
-                        "value": "unknown",
-                    },
-                ],
-                "profile": {
-                    "host_class": {
-                        "confidence": "high",
-                        "evidence": ["probe: self-test host confirmed"],
-                        "value": "self-managed",
-                    }
-                },
-                "schema_version": SCHEMA_VERSION,
-                "target": "{}://{}-{}/".format("https", "selftest", "url"),
-                "tool": "fingerprint",
-            }
+            mismatched_stack = selftest_stack()
+            mismatched_stack["target"] = "{}://{}-{}/".format(
+                "https", "selftest", "url"
+            )
             cases.append(
                 (
                     "stack origin mismatch refused",
@@ -1848,6 +2131,7 @@ def run_selftest() -> int:
             tier_one_option["changes"][0]["target"] = {
                 "identifier": "selftest-option",
                 "kind": "wp-option",
+                "operation": "configure",
             }
             cases.append(
                 (
@@ -1855,6 +2139,204 @@ def run_selftest() -> int:
                     tier_one_option,
                     "tier",
                     None,
+                )
+            )
+
+            wrong_plan_schema = copy.deepcopy(base)
+            wrong_plan_schema["schema_version"] = "1.0"
+            cases.append(
+                (
+                    "old change-plan schema refused",
+                    wrong_plan_schema,
+                    "document_shape",
+                    None,
+                )
+            )
+
+            wrong_stack_schema = selftest_stack()
+            wrong_stack_schema["schema_version"] = "1.0"
+            cases.append(
+                (
+                    "old stack schema refused independently",
+                    copy.deepcopy(base),
+                    "stack_shape",
+                    wrong_stack_schema,
+                )
+            )
+
+            missing_operation = copy.deepcopy(base)
+            del missing_operation["changes"][0]["target"]["operation"]
+            cases.append(
+                (
+                    "missing target.operation refused",
+                    missing_operation,
+                    "target.operation",
+                    None,
+                )
+            )
+
+            invalid_operation = copy.deepcopy(base)
+            invalid_operation["changes"][0]["target"]["operation"] = "restart"
+            cases.append(
+                (
+                    "out-of-vocabulary target.operation refused",
+                    invalid_operation,
+                    "target.operation",
+                    None,
+                )
+            )
+
+            missing_approval_evidence = copy.deepcopy(base)
+            del missing_approval_evidence["changes"][0]["approval"]["evidence"]
+            cases.append(
+                (
+                    "bare approval boolean refused at execution readiness",
+                    missing_approval_evidence,
+                    "approval",
+                    None,
+                )
+            )
+
+            malformed_approval_evidence = copy.deepcopy(base)
+            malformed_approval_evidence["changes"][0]["approval"]["evidence"] = {
+                "scope": "Configure the self-test cache setting.",
+                "source": "",
+            }
+            cases.append(
+                (
+                    "empty approval evidence field refused",
+                    malformed_approval_evidence,
+                    "approval",
+                    None,
+                )
+            )
+
+            unnamed_high_consequence = copy.deepcopy(base)
+            unnamed_high_consequence["changes"][0]["target"]["operation"] = "deactivate"
+            cases.append(
+                (
+                    "high-consequence operation absent from approval scope refused",
+                    unnamed_high_consequence,
+                    "approval",
+                    None,
+                )
+            )
+
+            godaddy_activate = copy.deepcopy(base)
+            godaddy_activate["host_class"] = "godaddy"
+            godaddy_activate["changes"][0]["target"] = {
+                "identifier": "litespeed-cache",
+                "kind": "plugin-setting",
+                "operation": "activate",
+            }
+            godaddy_activate["changes"][0]["approval"]["evidence"][
+                "scope"
+            ] = "Activate litespeed-cache."
+            cases.append(
+                (
+                    "page-cache activation on restricted host refused",
+                    godaddy_activate,
+                    "host_policy",
+                    None,
+                )
+            )
+
+            wpengine_relabel = copy.deepcopy(base)
+            wpengine_relabel["host_class"] = "wpengine"
+            wpengine_relabel["tier"] = 2
+            wpengine_relabel["changes"][0]["target"] = {
+                "identifier": "active_plugins",
+                "kind": "wp-option",
+                "operation": "activate",
+            }
+            wpengine_relabel["changes"][0]["summary"] = (
+                "Activate the WP Rocket page-cache plugin."
+            )
+            wpengine_relabel["changes"][0]["approval"]["evidence"][
+                "scope"
+            ] = "Activate wp-rocket through active_plugins."
+            cases.append(
+                (
+                    "wp-option relabel cannot bypass page-cache policy",
+                    wpengine_relabel,
+                    "host_policy",
+                    None,
+                )
+            )
+
+            omitted_public_layer = copy.deepcopy(base)
+            omitted_public_layer["cache_layers_present"] = []
+            omitted_public_layer["changes"][0]["purge_layers"] = []
+            cases.append(
+                (
+                    "publicly found cache layer may not be omitted",
+                    omitted_public_layer,
+                    "stack_cache_layers",
+                    selftest_stack(),
+                )
+            )
+
+            absent_stack = selftest_stack()
+            absent_stack["cache_layers"][1] = {
+                "confidence": "high",
+                "evidence": ["probe: self-test established server cache absence"],
+                "layer": "server",
+                "value": "none",
+            }
+            cases.append(
+                (
+                    "cache layer proven absent may not be listed",
+                    copy.deepcopy(base),
+                    "stack_cache_layers",
+                    absent_stack,
+                )
+            )
+
+            unknown_stack = selftest_stack()
+            unknown_stack["cache_layers"][1] = {
+                "confidence": "none",
+                "evidence": [],
+                "layer": "server",
+                "value": "unknown",
+            }
+            cases.append(
+                (
+                    "unknown cache layer without operator evidence may not be listed",
+                    copy.deepcopy(base),
+                    "stack_cache_layers",
+                    unknown_stack,
+                )
+            )
+
+            contradictory_confirmation = selftest_stack()
+            contradictory_confirmation["cache_layers"][1]["operator_confirmed"] = {
+                "confirmed_by": "Self-test operator record.",
+                "evidence": ["probe: self-test higher-tier reading"],
+                "tier": 2,
+                "value": "other",
+            }
+            cases.append(
+                (
+                    "operator confirmation cannot contradict a public finding",
+                    copy.deepcopy(base),
+                    "stack_cache_layers",
+                    contradictory_confirmation,
+                )
+            )
+
+            malformed_confirmation = copy.deepcopy(unknown_stack)
+            malformed_confirmation["cache_layers"][1]["operator_confirmed"] = {
+                "confirmed_by": "",
+                "evidence": [],
+                "tier": 0,
+                "value": "invented-cache",
+            }
+            cases.append(
+                (
+                    "malformed operator confirmation refused",
+                    copy.deepcopy(base),
+                    "stack_cache_layers",
+                    malformed_confirmation,
                 )
             )
 
@@ -1876,6 +2358,157 @@ def run_selftest() -> int:
                         )
                     )
                 lines.extend(render_selftest_problems(case_problems))
+
+            accepted_cases: List[
+                Tuple[str, Dict[str, Any], Optional[Dict[str, Any]]]
+            ] = []
+
+            accepted_cases.append(
+                (
+                    "matching plan and stack schema versions accepted",
+                    copy.deepcopy(base),
+                    selftest_stack(),
+                )
+            )
+
+            godaddy_disable = copy.deepcopy(base)
+            godaddy_disable["host_class"] = "godaddy"
+            godaddy_disable["changes"][0]["target"] = {
+                "identifier": "litespeed-cache",
+                "kind": "plugin-setting",
+                "operation": "disable",
+            }
+            accepted_cases.append(
+                (
+                    "page-cache disable is exempt from host policy",
+                    godaddy_disable,
+                    None,
+                )
+            )
+
+            confirmed_activate = copy.deepcopy(godaddy_activate)
+            confirmed_activate["host_class"] = "other"
+            confirmed_activate["changes"][0]["host_confirmation"] = {
+                "scope": "The provider confirmed this product permits litespeed-cache activation.",
+                "source": "Self-test operator support record.",
+            }
+            accepted_cases.append(
+                (
+                    "unconfirmable-host page-cache activation with confirmation accepted",
+                    confirmed_activate,
+                    None,
+                )
+            )
+
+            wpengine_remove = copy.deepcopy(base)
+            wpengine_remove["host_class"] = "wpengine"
+            wpengine_remove["changes"][0]["target"] = {
+                "identifier": "wp-rocket/wp-rocket.php",
+                "kind": "plugin-setting",
+                "operation": "remove",
+            }
+            wpengine_remove["changes"][0]["approval"]["evidence"][
+                "scope"
+            ] = "Remove wp-rocket."
+            accepted_cases.append(
+                (
+                    "page-cache removal is host-policy exempt with scoped approval",
+                    wpengine_remove,
+                    None,
+                )
+            )
+
+            wpengine_unrelated_activation = copy.deepcopy(base)
+            wpengine_unrelated_activation["host_class"] = "wpengine"
+            wpengine_unrelated_activation["tier"] = 2
+            wpengine_unrelated_activation["changes"][0]["summary"] = (
+                "Activate the unrelated contact form plugin."
+            )
+            wpengine_unrelated_activation["changes"][0]["target"] = {
+                "identifier": "active_plugins",
+                "kind": "wp-option",
+                "operation": "activate",
+            }
+            wpengine_unrelated_activation["changes"][0]["approval"]["evidence"][
+                "scope"
+            ] = "Activate the unrelated contact form plugin."
+            accepted_cases.append(
+                (
+                    "active_plugins option does not blanket-refuse unrelated activation",
+                    wpengine_unrelated_activation,
+                    None,
+                )
+            )
+
+            named_high_consequence = copy.deepcopy(base)
+            named_high_consequence["changes"][0]["target"]["operation"] = "update"
+            named_high_consequence["changes"][0]["approval"]["evidence"][
+                "scope"
+            ] = "Update the self-test cache setting."
+            accepted_cases.append(
+                (
+                    "high-consequence operation named by approval accepted",
+                    named_high_consequence,
+                    None,
+                )
+            )
+
+            confirmed_stack = copy.deepcopy(unknown_stack)
+            confirmed_stack["cache_layers"][1]["operator_confirmed"] = {
+                "confirmed_by": "Self-test WP-CLI session.",
+                "evidence": ["probe: self-test higher-tier server cache reading"],
+                "tier": 2,
+                "value": "other",
+            }
+            accepted_cases.append(
+                (
+                    "operator-confirmed unknown layer and its purge accepted",
+                    copy.deepcopy(base),
+                    confirmed_stack,
+                )
+            )
+
+            no_cache_plan = copy.deepcopy(base)
+            no_cache_plan["cache_layers_present"] = []
+            no_cache_plan["changes"][0]["purge_layers"] = []
+            accepted_cases.append(
+                (
+                    "publicly unknown layer omitted without a guess",
+                    copy.deepcopy(no_cache_plan),
+                    unknown_stack,
+                )
+            )
+            accepted_cases.append(
+                (
+                    "layer proven absent omitted from plan",
+                    copy.deepcopy(no_cache_plan),
+                    absent_stack,
+                )
+            )
+
+            other_server_stack = selftest_stack()
+            other_server_stack["cache_layers"][1]["value"] = "other"
+            accepted_cases.append(
+                (
+                    "unidentified proven server cache value other accepted",
+                    copy.deepcopy(base),
+                    other_server_stack,
+                )
+            )
+
+            for label, case, case_stack in accepted_cases:
+                total += 1
+                case_problems = validate_plan(case, plan_path, root, case_stack)
+                if not case_problems:
+                    passed += 1
+                    lines.append("[PASS] {} (0 problems)".format(label))
+                else:
+                    lines.append(
+                        "[FAIL] {} rejected ({} problem(s))".format(
+                            label, len(case_problems)
+                        )
+                    )
+                    lines.extend(render_selftest_problems(case_problems))
 
             pending_readiness = copy.deepcopy(base)
             pending_readiness["changes"][0]["approval"]["granted"] = False
@@ -1910,6 +2543,38 @@ def run_selftest() -> int:
                 )
                 lines.extend(render_selftest_problems(preflight_problems))
             lines.extend(render_selftest_problems(readiness_problems))
+
+            bare_approval = copy.deepcopy(base)
+            del bare_approval["changes"][0]["approval"]["evidence"]
+            total += 1
+            bare_preflight_problems = validate_plan(
+                bare_approval,
+                plan_path,
+                root,
+                preflight=True,
+            )
+            bare_readiness_problems = validate_plan(bare_approval, plan_path, root)
+            has_evidence_refusal = any(
+                problem.rule == "approval" and "approval.evidence" in problem.message
+                for problem in bare_readiness_problems
+            )
+            if not bare_preflight_problems and has_evidence_refusal:
+                passed += 1
+                lines.append(
+                    "[PASS] preflight accepts approval before evidence exists; execution "
+                    "readiness refuses the bare boolean ({} problem(s))".format(
+                        len(bare_readiness_problems)
+                    )
+                )
+            else:
+                lines.append(
+                    "[FAIL] approval-evidence readiness split ({} preflight problem(s), {} "
+                    "readiness problem(s))".format(
+                        len(bare_preflight_problems), len(bare_readiness_problems)
+                    )
+                )
+                lines.extend(render_selftest_problems(bare_preflight_problems))
+            lines.extend(render_selftest_problems(bare_readiness_problems))
     except (OSError, UnicodeError) as exc:
         lines.append("[FAIL] self-test fixture setup failed: {}".format(exc))
 
@@ -1934,7 +2599,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--preflight",
         action="store_true",
-        help="defer approval-granted and snapshot-file readiness checks",
+        help="defer approval-granted, approval-evidence, and snapshot-file readiness checks",
     )
     parser.add_argument(
         "--repo-root",

@@ -47,21 +47,28 @@ holding.
 
 ## Stack
 
-What this site actually runs on, from `fingerprint.py`. Confidence is stated because it changes
-how much weight a finding deserves.
+What this site actually runs on. Confidence is stated because it changes how much weight a finding
+deserves — and `Source` names what produced that confidence, because the same word means different
+things behind a public probe and behind a command you ran.
 
-| Layer | Detected | Confidence |
-|---|---|---|
-| Builder / editor | {{BUILDER}} | {{BUILDER_CONF}} |
-| Theme | {{THEME}} ({{THEME_TYPE}}) | {{THEME_CONF}} |
-| Host | {{HOST_CLASS}} | {{HOST_CONF}} |
-| Server | {{SERVER}} | {{SERVER_CONF}} |
-| Edge / CDN | {{CDN}} | {{CDN_CONF}} |
-| Server cache | {{SERVER_CACHE}} | {{SERVER_CACHE_CONF}} |
-| Page-cache plugin | {{PAGE_CACHE}} | {{PAGE_CACHE_CONF}} |
-| Object cache | {{OBJECT_CACHE}} | {{OBJECT_CACHE_CONF}} |
-| Multilingual | {{MULTILINGUAL}} | {{ML_CONF}} |
-| WooCommerce | {{WOO}} | {{WOO_CONF}} |
+Most rows come from `fingerprint.py`. Any row you confirmed at a higher access tier says so
+instead — `WP-CLI tier 2`, `host control panel`, `operator` — because `fingerprint.py` reads public
+HTTP responses only, and a managed host's gateway cache or a server-side object cache does not
+appear in one. Writing `fingerprint.py` next to a value it rated `unknown` is the specific error
+this column exists to stop.
+
+| Layer | Detected | Confidence | Source |
+|---|---|---|---|
+| Builder / editor | {{BUILDER}} | {{BUILDER_CONF}} | {{BUILDER_SRC}} |
+| Theme | {{THEME}} ({{THEME_TYPE}}) | {{THEME_CONF}} | {{THEME_SRC}} |
+| Host | {{HOST_CLASS}} | {{HOST_CONF}} | {{HOST_SRC}} |
+| Server | {{SERVER}} | {{SERVER_CONF}} | {{SERVER_SRC}} |
+| Edge / CDN | {{CDN}} | {{CDN_CONF}} | {{CDN_SRC}} |
+| Server cache | {{SERVER_CACHE}} | {{SERVER_CACHE_CONF}} | {{SERVER_CACHE_SRC}} |
+| Page-cache plugin | {{PAGE_CACHE}} | {{PAGE_CACHE_CONF}} | {{PAGE_CACHE_SRC}} |
+| Object cache | {{OBJECT_CACHE}} | {{OBJECT_CACHE_CONF}} | {{OBJECT_CACHE_SRC}} |
+| Multilingual | {{MULTILINGUAL}} | {{ML_CONF}} | {{ML_SRC}} |
+| WooCommerce | {{WOO}} | {{WOO_CONF}} | {{WOO_SRC}} |
 
 {{STACK_NOTES}}
 
