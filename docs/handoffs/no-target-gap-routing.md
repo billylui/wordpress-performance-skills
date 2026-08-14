@@ -9,7 +9,10 @@ picking it up — the reason is about the session, not the defect.
 ## Re-verify ground truth before acting
 
 ```bash
-python3 skills/wp-perf-audit/scripts/capabilities.py | grep -A 3 "^  - LCP:"
+# Match the tier-0 unlock, not a metric name: the label is "LCP" when no provider is present and
+# "Largest Contentful Paint (LCP)" when one is, so a grep for the metric reproduces the issue only
+# on some machines.
+python3 skills/wp-perf-audit/scripts/capabilities.py | grep -B 3 "Tier 0: public"
 grep -n "GAP_KIND_ACCESS, True" skills/wp-perf-audit/scripts/capabilities.py
 ```
 
@@ -31,16 +34,32 @@ this. It shows up when the script is run bare, which is a real thing an operator
 the tyres, but not the documented flow. **Wording infelicity in a degenerate invocation, not a
 defect in the audit.**
 
-## The fix
+## The fix — stated as an outcome, deliberately not as an implementation
 
 Tier-0 gaps need their own supply wording: *supply this before the audit can begin*, as against
-tier 1–3's *ask at step 4b*. The obvious implementation — branching on the `"Tier 0: public"` string
-inside `unlock` — is the matcher-shaped trap this repo has been bitten by twice (WP-ESC-12,
-WP-ESC-15): a guard keyed to a display string. `access_gaps()` already receives the `tier` as an
-integer, so carry that through instead of re-deriving it from prose.
+tier 1–3's *ask at step 4b*.
 
-Acceptance: a tier-0 gap's rendered supply line must not mention step 4b; a tier-2 gap's still must.
-Both directions, or the case is worthless.
+**This section used to prescribe a mechanism. A review found the prescription wrong in two ways, so
+it has been removed rather than corrected** — the useful thing to hand over is the outcome and the
+traps, not an implementation nobody has run.
+
+What the prescription got wrong, kept because both are live traps for whoever picks this up:
+
+1. It said to carry the integer tier through `access_gaps()`. **The re-keyed objective gaps never
+   pass through `access_gaps()`** — they originate in `measurement_gaps()` and are converted inline
+   in `measurement_boundaries`. Following the instruction would have left exactly the gaps this
+   handoff is about still routed to step 4b.
+2. Those dictionaries are serialized into `cannot_measure` unchanged, so adding a tier field to them
+   **publishes an undocumented schema field** — precisely the defect fixed in the same commit that
+   created this handoff. Either update the capability schema in `docs/CONTRACTS.md` first, or keep
+   the routing metadata out of the serialized profile entirely.
+
+Also avoid the obvious shortcut of branching on the `"Tier 0: public"` string inside `unlock`: a
+guard keyed to a display string is the matcher shape behind both WP-ESC-12 and WP-ESC-15.
+
+**Acceptance:** a tier-0 gap's rendered supply line must not mention step 4b, and a tier-2 gap's
+still must — both directions, or the case is worthless. Exercise it with a provider both present and
+absent, since the gap's metric label differs between those states.
 
 ## Why this is open rather than fixed
 
