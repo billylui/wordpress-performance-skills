@@ -11,15 +11,27 @@ verdict: NOT-READY
 First gate ever run for this repository; `docs/walkthroughs/` did not exist before it, so "since
 last ship" is the whole delta from `b5557a1` — 14 commits, 21 files.
 
-**Verdict: NOT-READY, for exactly one reason.** Every selected row passes. The blocker is the
-checkpoint-review precondition: the newest review record covers `2187aab`, and two commits landed
-after it. `fafe639` — the GoDaddy revert plus two capability-gap fixes — **has not been
-independently reviewed**. That is a deliberate stop, not an omission: the previous round produced a
-finding that was a sibling of the round before it, which the convergence protocol calls
-non-convergence and answers with stop-and-hand-off rather than a third attempt.
+**Verdict: NOT-READY on two rows.**
 
-`review: degraded — final commit fafe639 unreviewed; loop stopped for non-convergence.`
-This verdict flips to READY on either an explicit in-session waiver or a clean review of `fafe639`.
+`fafe639` was reviewed after this report was first written, on the operator's instruction rather
+than by waiver. It came back with **three P2 findings**, two of which are siblings of earlier
+fixes — the second non-convergence signal in this shipment. The review loop is stopped, and the
+remaining findings are handed off rather than patched.
+
+1. **WP-SCHEMA-01 FAILS.** `capabilities.py` emits an undocumented `kind` field. See the row below.
+   This report originally marked it PASS; that was wrong, and how it was wrong is instructive — the
+   row was checked against the commits I was thinking about rather than against every schema change
+   in the diff.
+2. **Capability-gap guidance is still structurally misleading with no `--target`.** The previous
+   round's fix prepended the missing URL to `blocked_by` and left `kind` and `unlock` untouched, so
+   the structured fields still say *supply a provider* for a metric no provider can unlock without a
+   URL. Fixing the prose and not the structure is what makes this a sibling rather than a new
+   finding.
+
+Both are in the capability-gap work. Tracked in
+[handoffs/capability-gap-followups.md](../handoffs/capability-gap-followups.md).
+
+`review: ran — 3 findings, 2 siblings; loop stopped for non-convergence, findings handed off.`
 
 ## Review record
 
@@ -65,7 +77,7 @@ Catalog rows are correctly **not selected** — no catalog entry changed.
 | WP-PROC-02 | PASS | `check_skill_docs.py` — no repository-root-relative script path |
 | WP-REPORT-01 | PASS | `check_report.py --selftest` 30/30 and `--template` CONFORMANT |
 | WP-HOST-01 | PASS | **manual, read the diff.** No permissive verdict introduced. `godaddy` nets `unconfirmable → unconfirmable` with a first-party citation **added**. The only uncited permissive entry is `self-managed`, which is the documented self-authority exemption |
-| WP-SCHEMA-01 | PASS | `docs/CONTRACTS.md` changed at `7d972c4`, scripts first at `9f57d61`; capability schema at `3f4f159`, `capabilities.py` at `2187aab`. Schema before consumers, both times. Every consumer parses — all script rows green |
+| WP-SCHEMA-01 | **FAIL** | **Corrected after this report was first written.** `capabilities.py` emits a new `cannot_measure[].kind` field (`provider` \| `access`) in 5 places; `docs/CONTRACTS.md` does not define it — the only `kind` in the contract is the unrelated `target.kind`. The contract must change *before* its consumers, and here it did not change at all. The earlier changes in this shipment did satisfy the row (`7d972c4` before `9f57d61`; `3f4f159` before `2187aab`), and passing it on that basis is exactly the error: the row was checked against the commits I had in mind rather than against every schema change in the diff |
 | WP-INSTALL-01 | PASS | `check_plugin_manifest.py` OK |
 
 ¹ WP-MEAS-02's evidence is the unit-level breaker case plus the live document, not the full payload

@@ -194,8 +194,9 @@ the plugin category. Every unnamed product remains `UNCONFIRMABLE` and therefore
   *"this is not an exhaustive list"* and that a plugin *"may be added to the list or disabled at any
   time"*, and one of its stated blocklist categories is plugins duplicating functionality already in
   GoDaddy's system — which is what a page cache does on a product that ships its own gateway cache.
-  There is therefore no first-party allowance for **any** page-cache plugin here, which is why the
-  verdict is `prohibited` rather than `permitted-only` on the six that happen not to be named.
+  There is therefore no first-party allowance for **any** page-cache plugin **on that product** —
+  which is why the section below says to treat Managed Hosting for WordPress as prohibited in
+  practice, even though the class verdict is `unconfirmable`.
   [blocklisted plugins](https://www.godaddy.com/help/blocklisted-plugins-8964)
 
   **Why the verdict is `unconfirmable` and not `prohibited`, despite that evidence.** The blocklist
