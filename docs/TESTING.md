@@ -17,6 +17,13 @@ a merge to `main` that changes a `SKILL.md`, a catalog entry, a script, or a sch
 
 Rules: no PASS without evidence; no silent SKIP; quarantined rows stay visible in every report.
 
+**A count in the How column is a floor, and floors only ever go up.** A self-test that reports fewer
+cases than the row says has had cases deleted, which is the thing worth catching. Raise the number in
+the same change that adds cases. These two had already drifted before anyone noticed — WP-DOC-03 read
+`16/16` while the checker had been at `24/24` for some time — and a row whose expected value is wrong
+is a row nobody is really checking. Prefer WP-GATE-02's shape where you can: it names no count, so it
+cannot go stale.
+
 ## 1. Always-on rows
 
 Run on EVERY release regardless of diff. All are automated and all run in CI — a row is not
@@ -25,11 +32,11 @@ Run on EVERY release regardless of diff. All are automated and all run in CI —
 | ID | Class | Check | How | Budget |
 |---|---|---|---|---|
 | WP-SMOKE-01 | smoke | A tier-0 audit of a real public site completes and reports origin-vs-edge separately | `perf-probe.py --site <URL> --quick --repeats 1` | 2m |
-| WP-GATE-01 | safety | The change-plan validator still refuses every fail-open shape | `validate_plan.py --selftest` → 11/11 | 1m |
+| WP-GATE-01 | safety | The change-plan validator still refuses every fail-open shape | `validate_plan.py --selftest` → ≥ 36/36 | 1m |
 | WP-GATE-02 | safety | The independently-authored adversarial suite passes | `tools/adversarial_gate_tests.py` | 2m |
 | WP-DOC-01 | contract | Links resolve, references are one level deep, no time-sensitive claims, no blanket host permission | `tools/check_skill_docs.py` | 1m |
 | WP-DOC-02 | contract | The report template still satisfies the report contract | `tools/check_report.py --template …` | 1m |
-| WP-DOC-03 | contract | The report checker's own refusals still fire | `check_report.py --selftest` → 16/16 | 1m |
+| WP-DOC-03 | contract | The report checker's own refusals still fire | `check_report.py --selftest` → ≥ 30/30 | 1m |
 | WP-EGRESS-01 | promise | No third-party host literal anywhere in the shipped scripts | `tools/check_no_egress.py` | 1m |
 | WP-PKG-01 | install | Manifests and the documented install command agree | `tools/check_plugin_manifest.py` | 1m |
 | WP-HOST-02 | safety | The host policy table and its human document still agree | `tools/check_host_policy.py` | 1m |
