@@ -63,6 +63,10 @@ REQUIRED_METRICS = (
 
 # The scorecard contract fixes exactly these four columns.
 SCORECARD_COLUMNS = ("Metric", "Value", "Rating", "Source")
+# Stack tables remain free-form; these exact headers alone trigger the provenance rule in the
+# report contract. Keeping them named makes it clear that no other Stack table shape is fixed.
+STACK_CONFIDENCE_COLUMN = "Confidence"
+STACK_SOURCE_COLUMN = "Source"
 
 # Violations about the report's shape rather than the content of one cell. The human report
 # prints the full required order once when any of these fire, so the individual messages can name
@@ -278,10 +282,12 @@ def split_table_row(line: str) -> Optional[List[str]]:
     return cells
 
 
-def is_table_separator(cells: Sequence[str]) -> bool:
-    """Return whether all four cells form a Markdown delimiter row."""
+def is_table_separator(
+    cells: Sequence[str], expected_column_count: int = len(SCORECARD_COLUMNS)
+) -> bool:
+    """Return whether the expected cells form a Markdown delimiter row."""
 
-    if len(cells) != len(SCORECARD_COLUMNS):
+    if len(cells) != expected_column_count:
         return False
     minimum = MIN_TABLE_SEPARATOR_HYPHENS
     pattern = re.compile(r"^:?-{{{},}}:?$".format(minimum))
@@ -834,6 +840,97 @@ def validate_no_placeholders(
         )
 
 
+def validate_stack_section(
+    lines: Sequence[str],
+    hidden: Sequence[bool],
+    headings: Sequence[Heading],
+    sections: Mapping[str, Heading],
+    template_mode: bool,
+    problems: List[Problem],
+) -> None:
+    """Require provenance only for Stack tables that claim confidence."""
+
+    heading = sections.get("Stack")
+    if heading is None:
+        return
+    end_index = len(lines)
+    for candidate in headings:
+        if candidate.line_index > heading.line_index and candidate.level <= heading.level:
+            end_index = candidate.line_index
+            break
+
+    index = heading.line_index + 1
+    while index + 1 < min(end_index, len(lines)):
+        if hidden[index] or lines[index].startswith(("    ", "\t")):
+            index += 1
+            continue
+        header_cells = split_table_row(lines[index])
+        separator_cells = (
+            None if hidden[index + 1] else split_table_row(lines[index + 1])
+        )
+        if (
+            not header_cells
+            or separator_cells is None
+            or not is_table_separator(separator_cells, len(header_cells))
+        ):
+            index += 1
+            continue
+
+        table_line = index + 1
+        if STACK_CONFIDENCE_COLUMN not in header_cells:
+            index += 2
+            continue
+        if STACK_SOURCE_COLUMN not in header_cells:
+            add_problem(
+                problems,
+                "Stack",
+                "stack_source_column",
+                "section '## Stack' table at line {} has a Confidence column but no Source "
+                "column. Add Source to that table and name the tool or access tier behind "
+                "every row's confidence.".format(table_line),
+            )
+            index += 2
+            continue
+
+        source_index = header_cells.index(STACK_SOURCE_COLUMN)
+        row_index = index + 2
+        while row_index < min(end_index, len(lines)):
+            if hidden[row_index] or not lines[row_index].strip():
+                break
+            row_cells = split_table_row(lines[row_index])
+            if row_cells is None:
+                break
+            source_cell = row_cells[source_index] if source_index < len(row_cells) else ""
+            source = without_html_comments(source_cell).strip()
+            source_placeholder = is_placeholder(source_cell, template_mode)
+            unresolved_source_placeholder = (
+                not template_mode
+                and PLACEHOLDER_RE.match(source_cell.strip()) is not None
+            )
+            label = row_cells[0].strip() if row_cells and row_cells[0].strip() else "<blank>"
+            if unresolved_source_placeholder:
+                add_problem(
+                    problems,
+                    label,
+                    "stack_source",
+                    "section '## Stack' table row {!r} at line {} has Source {!r}, an "
+                    "unresolved placeholder. Fill it with the tool or access tier behind the "
+                    "row's Confidence; use --template only when validating the shipped "
+                    "template.".format(label, row_index + 1, source_cell.strip()),
+                )
+            if not source_placeholder and not source:
+                add_problem(
+                    problems,
+                    label,
+                    "stack_source",
+                    "section '## Stack' table row {!r} at line {} has an empty Source. Name "
+                    "the tool or access tier behind the row's Confidence, or use a whole-cell "
+                    "placeholder in --template mode.".format(label, row_index + 1),
+                )
+            row_index += 1
+        index = max(row_index, index + 2)
+
+
 def validate_result_section(
     lines: Sequence[str],
     hidden: Sequence[bool],
@@ -941,6 +1038,9 @@ def validate_report(document: str, template_mode: bool = False) -> List[Problem]
             ),
         )
 
+    validate_stack_section(
+        lines, hidden, headings, sections, template_mode, problems
+    )
     validate_result_section(lines, hidden, headings, sections, template_mode, problems)
     return sorted_problems(problems)
 
@@ -1264,6 +1364,80 @@ def run_selftest() -> int:
     ):
         template = template.replace(old, new, 1)
     cases.append(("template placeholders accepted", template, True, None))
+    cases.append(
+        (
+            "a Stack table with Confidence and no Source column is refused",
+            base.replace(
+                "## Stack\n\nnone\n",
+                "## Stack\n\n| Layer | Value | Confidence |\n|---|---|---|\n"
+                "| Server cache | enabled | high |\n",
+                1,
+            ),
+            False,
+            "stack_source_column",
+        )
+    )
+    cases.append(
+        (
+            "a Stack table with Confidence and an empty Source cell is refused",
+            base.replace(
+                "## Stack\n\nnone\n",
+                "## Stack\n\n| Layer | Value | Confidence | Source |\n|---|---|---|---|\n"
+                "| Server cache | enabled | high | |\n",
+                1,
+            ),
+            False,
+            "stack_source",
+        )
+    )
+    cases.append(
+        (
+            "CONTROL: a Stack table with Confidence and filled Source cells is ACCEPTED",
+            base.replace(
+                "## Stack\n\nnone\n",
+                "## Stack\n\n| Layer | Value | Confidence | Source |\n|---|---|---|---|\n"
+                "| Server cache | enabled | high | WP-CLI tier 2 |\n"
+                "| CDN | unknown | none | fingerprint.py |\n",
+                1,
+            ),
+            False,
+            None,
+        )
+    )
+    cases.append(
+        (
+            "CONTROL: a Stack table without Confidence is ACCEPTED",
+            base.replace(
+                "## Stack\n\nnone\n",
+                "## Stack\n\n| Layer | Value |\n|---|---|\n"
+                "| Server cache | unknown |\n",
+                1,
+            ),
+            False,
+            None,
+        )
+    )
+    cases.append(
+        (
+            "CONTROL: a prose-only Stack section is ACCEPTED",
+            base,
+            False,
+            None,
+        )
+    )
+    cases.append(
+        (
+            "CONTROL: a whole-cell Stack Source placeholder is accepted in --template mode",
+            base.replace(
+                "## Stack\n\nnone\n",
+                "## Stack\n\n| Layer | Confidence | Source |\n|---|---|---|\n"
+                "| Server cache | high | {{STACK_SOURCE}} |\n",
+                1,
+            ),
+            True,
+            None,
+        )
+    )
     cases.append(
         (
             # The published definitions are inclusive at the good boundary ("200 milliseconds or
